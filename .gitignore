@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime / generated data
+data/uploads/
+data/outputs/
+data/runs.db
+data/reports/*.mp4
+data/reports/*.avi
+data/reports/golf-debug-*.jpg
+
+# Large model weights (optional local)
+yolov8n.pt
+
+# Build
+dist/
+build/

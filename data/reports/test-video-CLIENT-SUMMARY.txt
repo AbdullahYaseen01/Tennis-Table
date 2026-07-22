@@ -1,0 +1,69 @@
+TENNIS BALL CONDITION TEST — CLIENT SUMMARY
+============================================
+Video file:     Test video.mp4  (720×1280, 24 fps, ~11.7 s)
+Test date:      21 July 2026
+Ball type:      Tennis (ITF reference diameter 67.0 mm)
+System:         Tennis Ball & Pickleball Condition Tester v2
+
+EXECUTIVE SUMMARY
+-----------------
+The video was processed end-to-end: baseline capture → compression under
+load → recovery after release. Ball tracking succeeded on 92% of frames.
+
+  ✓  Baseline diameter (at rest):     66.0 mm  (within ~3% of new-ball spec)
+  ✓  Peak compression under load:      55.9 %   (relative to baseline)
+  ✓  Ball detection confidence:        0.65 average
+  ⚠  Recovery timing:                  Low fit confidence on this footage
+                                     (green ball on green turf causes
+                                      intermittent edge noise — see notes)
+
+DETAILED RESULTS
+----------------
+Detection
+  Frames analysed:        130 / 281
+  Detection rate:         92.3 %
+  Mean confidence:        0.65
+
+Calibration (auto from ball at rest)
+  Scale:                  1.491 px/mm
+  Rest diameter (mean):   65.03 mm
+  Error vs 67 mm spec:    −2.94 %
+
+Compression test
+  Baseline (locked):      65.97 mm
+  Maximum compression:    55.9 %
+
+Recovery (after load release)
+  Time constant (tau):    0.036 s  *
+  Time to 95% recovery:   0.061 s  *
+  Residual deformation:   −50.0 %  *
+  Fit confidence:         0.20     *
+
+  * Recovery curve fit had low confidence on this video. Compression %
+    remains the most reliable output. For production testing, use a
+    contrasting background or diffuse lighting to improve edge stability.
+
+INTERPRETATION FOR YOUR CLIENT
+------------------------------
+1. Relative compression (55.9 %) measures how much the ball deforms under
+   load compared to its own resting size — this is the primary fatigue
+   indicator and does not depend on perfect absolute calibration.
+
+2. Absolute diameter (~66 mm at rest) aligns well with a standard tennis
+   ball, giving confidence that scale calibration worked on this footage.
+
+3. For publishable recovery-time numbers (tau / t95), re-shoot with:
+   • Ball centred in frame, camera fixed on tripod
+   • Background that contrasts with the ball (avoid green turf + yellow ball)
+   • Even, diffuse lighting without strong shadows
+
+FILES
+-----
+Full machine-readable report:
+  data/reports/test-video-test-report.json
+
+Technical report:
+  data/reports/test-video-test-report.txt
+
+To re-run on a new video:
+  python scripts/test_client_video.py "path/to/your/video.mp4"

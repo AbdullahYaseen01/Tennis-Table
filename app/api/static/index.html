@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tennis Ball Compression Test</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #1a2332;
+      --lime: #c8f135;
+      --teal: #00d4aa;
+      --coral: #ff6b4a;
+      --sky: #4dabf7;
+      --gold: #fbbf24;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: rgba(255,255,255,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(200,241,53,0.12), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(0,212,170,0.08), transparent);
+    }
+    .wrap { max-width: 780px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+
+    header { text-align: center; margin-bottom: 1.75rem; }
+    .logo {
+      width: 56px; height: 56px;
+      background: linear-gradient(135deg, var(--lime), #9acd32);
+      border-radius: 50%;
+      margin: 0 auto 1rem;
+      box-shadow: 0 0 40px rgba(200,241,53,0.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.75rem;
+    }
+    h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); margin-top: 0.4rem; font-size: 0.95rem; max-width: 520px; margin-inline: auto; }
+
+    .steps {
+      display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .step {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: var(--card); border: 1px solid var(--border);
+      padding: 0.45rem 0.85rem; border-radius: 999px; font-size: 0.8rem; color: var(--muted);
+    }
+    .step.active { color: var(--lime); border-color: rgba(200,241,53,0.4); }
+    .step.done { color: var(--teal); border-color: rgba(0,212,170,0.4); }
+    .step-num {
+      width: 1.25rem; height: 1.25rem; border-radius: 50%;
+      background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 0.7rem;
+    }
+    .step.active .step-num { background: var(--lime); color: #0b0f14; }
+    .step.done .step-num { background: var(--teal); color: #0b0f14; }
+
+    .mode-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; }
+    .mode-tab {
+      flex: 1; padding: 0.75rem 1rem;
+      font-family: inherit; font-size: 0.9rem; font-weight: 600;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; color: var(--muted); cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .mode-tab.active {
+      color: var(--lime); border-color: rgba(200,241,53,0.45);
+      background: rgba(200,241,53,0.06);
+    }
+
+    .mode-panel { display: none; }
+    .mode-panel.active { display: block; }
+
+    .drop {
+      border: 2px dashed rgba(200,241,53,0.35);
+      border-radius: 16px; padding: 2.5rem 1.5rem; text-align: center;
+      background: var(--card); cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop:hover, .drop.dragover { border-color: var(--lime); background: rgba(200,241,53,0.05); }
+    .drop-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    .drop h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.35rem; }
+    .drop p { color: var(--muted); font-size: 0.875rem; }
+    .drop input { display: none; }
+    .file-name {
+      margin-top: 1rem; padding: 0.6rem 1rem;
+      background: rgba(0,0,0,0.25); border-radius: 8px;
+      font-size: 0.85rem; color: var(--lime); display: none;
+    }
+    .file-name.show { display: block; }
+
+    .ball-type-btn.active {
+      color: var(--lime); border-color: rgba(200,241,53,0.5);
+      background: rgba(200,241,53,0.08);
+    }
+
+    .tips-box {
+      margin-top: 1rem; padding: 1rem 1.1rem;
+      background: rgba(77,171,247,0.08); border: 1px solid rgba(77,171,247,0.25);
+      border-radius: 12px; font-size: 0.82rem; color: var(--muted); line-height: 1.5;
+    }
+    .tips-box strong { color: var(--sky); }
+
+    /* Camera wizard */
+    .cam-wizard-steps {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.35rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 600px) { .cam-wizard-steps { grid-template-columns: 1fr; } }
+    .cam-wiz-step {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.55rem 0.4rem; text-align: center;
+      font-size: 0.68rem; color: var(--muted); line-height: 1.3;
+    }
+    .cam-wiz-step.active { border-color: rgba(200,241,53,0.5); color: var(--lime); background: rgba(200,241,53,0.06); }
+    .cam-wiz-step.done { border-color: rgba(0,212,170,0.45); color: var(--teal); }
+    .cam-wiz-num { font-weight: 700; font-size: 0.85rem; display: block; margin-bottom: 0.15rem; }
+
+    .cam-step-panel { display: none; }
+    .cam-step-panel.active { display: block; }
+
+    .step-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.1rem 1.15rem; margin-bottom: 1rem;
+    }
+    .step-card h3 { font-size: 1rem; margin-bottom: 0.35rem; }
+    .step-card p { font-size: 0.85rem; color: var(--muted); line-height: 1.45; }
+
+    .checklist { list-style: none; margin-top: 0.75rem; }
+    .checklist li {
+      display: flex; align-items: flex-start; gap: 0.55rem;
+      font-size: 0.84rem; color: var(--muted); padding: 0.35rem 0;
+    }
+    .checklist li::before {
+      content: "○"; color: var(--muted); font-weight: 700; flex-shrink: 0;
+    }
+    .checklist li.checked { color: var(--teal); }
+    .checklist li.checked::before { content: "✓"; color: var(--teal); }
+
+    .camera-box {
+      position: relative; background: #000;
+      border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--border);
+      aspect-ratio: 16 / 10;
+    }
+    .camera-box video, .camera-box canvas {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    }
+    .camera-box canvas { pointer-events: none; }
+    .camera-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 0.9rem; gap: 0.5rem; background: var(--card);
+    }
+    .camera-placeholder span { font-size: 2rem; }
+
+    .cam-badge {
+      position: absolute; top: 10px; left: 10px; z-index: 2;
+      background: rgba(0,0,0,0.65); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.35rem 0.6rem;
+      font-size: 0.72rem; color: var(--lime); font-weight: 600;
+    }
+    .cam-badge.warn { color: var(--coral); border-color: rgba(255,107,74,0.4); }
+
+    .progress-wrap {
+      margin-top: 0.85rem; background: rgba(255,255,255,0.06);
+      border-radius: 999px; height: 10px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--teal), var(--lime));
+      border-radius: 999px; transition: width 0.15s ease;
+    }
+    .progress-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem;
+    }
+
+    .live-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.55rem;
+      margin-top: 0.85rem;
+    }
+    @media (max-width: 600px) { .live-stats { grid-template-columns: repeat(2, 1fr); } }
+    .live-stat {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 0.65rem; text-align: center;
+    }
+    .live-stat-val { font-size: 1.1rem; font-weight: 700; color: var(--lime); }
+    .live-stat-val.warn { color: var(--coral); }
+    .live-stat-val.teal { color: var(--teal); }
+    .live-stat-label { font-size: 0.65rem; color: var(--muted); margin-top: 0.1rem; }
+
+    .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 1rem; }
+    @media (max-width: 520px) { .btn-row { grid-template-columns: 1fr; } }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      width: 100%; margin-top: 1rem;
+      padding: 0.95rem 1.5rem;
+      font-family: inherit; font-size: 1rem; font-weight: 600;
+      border: none; border-radius: 12px; cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    .btn-row .btn { margin-top: 0; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn:not(:disabled):hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--lime), #a8d830);
+      color: #0b0f14; box-shadow: 0 4px 24px rgba(200,241,53,0.3);
+    }
+    .btn-secondary {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+    }
+    .btn-record {
+      background: linear-gradient(135deg, var(--coral), #e8553a);
+      color: #fff; box-shadow: 0 4px 24px rgba(255,107,74,0.25);
+    }
+    .btn-recording { animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    .btn-download {
+      background: linear-gradient(135deg, var(--teal), #00a884);
+      color: #0b0f14; box-shadow: 0 4px 24px rgba(0,212,170,0.3); text-decoration: none;
+    }
+
+    .countdown-overlay {
+      position: absolute; inset: 0; z-index: 3;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55); font-size: 5rem; font-weight: 700; color: var(--lime);
+    }
+    .countdown-overlay.show { display: flex; }
+
+    .panel { display: none; margin-top: 1.5rem; }
+    .panel.show { display: block; }
+
+    .progress-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 1.5rem; text-align: center;
+    }
+    .spinner {
+      width: 48px; height: 48px; margin: 0 auto 1rem;
+      border: 3px solid rgba(200,241,53,0.2);
+      border-top-color: var(--lime);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-text { font-weight: 500; color: var(--lime); }
+    .progress-sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.35rem; }
+
+    .results-title {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted); margin-bottom: 0.75rem; text-align: center;
+    }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+    @media (max-width: 520px) { .cards { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.1rem; text-align: center;
+    }
+    .card.highlight { border-color: rgba(255,107,74,0.45); }
+    .card-val { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+    .card-val.lime { color: var(--lime); }
+    .card-val.coral { color: var(--coral); }
+    .card-val.teal { color: var(--teal); }
+    .card-val.gold { color: var(--gold); }
+    .card-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+
+    .accuracy-banner {
+      margin-top: 1rem; padding: 0.85rem 1rem;
+      background: rgba(0,212,170,0.08); border: 1px solid rgba(0,212,170,0.3);
+      border-radius: 12px; font-size: 0.85rem; color: var(--teal); text-align: center;
+    }
+
+    .error-box {
+      background: rgba(255,107,74,0.12); border: 1px solid rgba(255,107,74,0.35);
+      border-radius: 12px; padding: 1rem; color: var(--coral); font-size: 0.9rem;
+      margin-top: 1rem; display: none;
+    }
+    .error-box.show { display: block; }
+
+    .again {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      margin-top: 0.75rem; font-size: 0.875rem; padding: 0.65rem;
+    }
+    .again:hover { color: var(--text); border-color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">🎾</div>
+      <h1>Ball Compression Test</h1>
+      <p class="sub">Step-by-step guided testing — captures many frames for high-accuracy baseline and compression measurement</p>
+    </header>
+
+    <div class="steps">
+      <div class="step" id="step1"><span class="step-num">1</span> Capture</div>
+      <div class="step" id="step2"><span class="step-num">2</span> Analyze</div>
+      <div class="step" id="step3"><span class="step-num">3</span> Download</div>
+    </div>
+
+    <section id="inputSection">
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="tabUpload" type="button">📹 Upload Video</button>
+        <button class="mode-tab" id="tabCamera" type="button">📷 Live Camera (Guided)</button>
+      </div>
+
+      <div class="mode-panel active" id="uploadPanel">
+        <div class="drop" id="dropZone">
+          <div class="drop-icon">📹</div>
+          <h2>Drop your test video here</h2>
+          <p>MP4, MOV, AVI, WEBM · best on dark background</p>
+          <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/x-msvideo,video/*" />
+          <div class="file-name" id="fileName"></div>
+        </div>
+        <div class="tips-box">
+          <strong>For best accuracy:</strong> use a dark mat, bright ball (yellow tennis or white golf),
+          camera fixed on tripod, ball fully visible — not cut at frame edges.
+        </div>
+        <button class="btn btn-primary" id="analyzeBtn" disabled>Analyze Video (frame-by-frame)</button>
+      </div>
+
+      <div class="mode-panel" id="cameraPanel">
+        <div class="cam-wizard-steps" id="camWizardSteps">
+          <div class="cam-wiz-step active" data-cam-step="1"><span class="cam-wiz-num">1</span>Setup</div>
+          <div class="cam-wiz-step" data-cam-step="2"><span class="cam-wiz-num">2</span>Camera</div>
+          <div class="cam-wiz-step" data-cam-step="3"><span class="cam-wiz-num">3</span>Baseline</div>
+          <div class="cam-wiz-step" data-cam-step="4"><span class="cam-wiz-num">4</span>Record</div>
+          <div class="cam-wiz-step" data-cam-step="5"><span class="cam-wiz-num">5</span>Results</div>
+        </div>
+
+        <!-- Step 1: Setup checklist -->
+        <div class="cam-step-panel active" id="camStep1">
+          <div class="step-card">
+            <h3>Step 1 — Prepare your test area</h3>
+            <p>Select ball type and confirm setup before starting the camera.</p>
+            <div class="btn-row" style="margin-top:0.75rem;margin-bottom:0.5rem;">
+              <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="tennis">🎾 Tennis Ball</button>
+              <button class="btn btn-secondary ball-type-btn" type="button" data-ball="golf">⛳ Golf / White Ball</button>
+            </div>
+            <ul class="checklist" id="setupChecklist">
+              <li id="chk1">Dark background (black/grey mat or table)</li>
+              <li id="chk2">Bright ball — yellow tennis or white golf ball</li>
+              <li id="chk3">Camera on tripod, pointing down at the ball</li>
+              <li id="chk4">Ball will be fully inside the frame (not at edges)</li>
+              <li id="chk5">Good lighting — no heavy shadows on the ball</li>
+            </ul>
+          </div>
+          <button class="btn btn-primary" id="camNext1" type="button">I've prepared everything →</button>
+        </div>
+
+        <!-- Step 2: Start camera -->
+        <div class="cam-step-panel" id="camStep2">
+          <div class="step-card">
+            <h3>Step 2 — Start camera & verify detection</h3>
+            <p>Place the ball still in the center guide box. Wait until status shows <strong>Tracking</strong>.</p>
+          </div>
+          <div class="camera-box" id="cameraBox">
+            <div class="camera-placeholder" id="cameraPlaceholder">
+              <span>📷</span>
+              <div>Tap "Start Camera" below</div>
+            </div>
+            <video id="camVideo" autoplay playsinline muted></video>
+            <canvas id="camOverlay"></canvas>
+            <div class="countdown-overlay" id="countdownOverlay">3</div>
+            <div class="cam-badge" id="camBadge">Camera off</div>
+          </div>
+          <div class="live-stats">
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveResolution">—</div>
+              <div class="live-stat-label">Resolution</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveFrames">0</div>
+              <div class="live-stat-label">Frames analyzed</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveStatus">Off</div>
+              <div class="live-stat-label">Detection</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveQuality">—</div>
+              <div class="live-stat-label">Quality</div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="startCamBtn" type="button">Start Camera</button>
+            <button class="btn btn-primary" id="camNext2" type="button" disabled>Ball detected → Baseline</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Baseline capture -->
+        <div class="cam-step-panel" id="camStep3">
+          <div class="step-card">
+            <h3>Step 3 — Lock baseline (60 frames)</h3>
+            <p>Hold the ball <strong>perfectly still</strong> and round. We capture <strong>60 frames</strong>, reject outliers (MAD filter), and lock ellipse-based baseline.</p>
+          </div>
+          <div class="camera-box">
+            <video id="camVideo2" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+            <canvas id="camOverlay2" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
+            <div class="cam-badge" id="baselineBadge">Ready</div>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" id="baselineProgress"></div></div>
+          <div class="progress-label">
+            <span id="baselineProgressText">0 / 60 frames</span>
+            <span id="baselineQualityText">Quality —</span>
+          </div>
+          <div class="live-stats">
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveBaseline">—</div>
+              <div class="live-stat-label">Baseline (mm)</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val teal" id="liveStability">—</div>
+              <div class="live-stat-label">Stability %</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val gold" id="liveConfidence">—</div>
+              <div class="live-stat-label">Confidence %</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveDiameter">—</div>
+              <div class="live-stat-label">Live diameter</div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="baselineBtn" type="button">Capture 60 Frames</button>
+            <button class="btn btn-primary" id="camNext3" type="button" disabled>Baseline locked → Record</button>
+          </div>
+        </div>
+
+        <!-- Step 4: Record test -->
+        <div class="cam-step-panel" id="camStep4">
+          <div class="step-card">
+            <h3>Step 4 — Record bounce test (15 seconds)</h3>
+            <p>Drop or bounce the ball on the surface. We record every frame and analyze compression on the server.</p>
+          </div>
+          <div class="camera-box">
+            <video id="camVideo3" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+            <canvas id="camOverlay3" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
+            <div class="cam-badge" id="recordBadge">Ready to record</div>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" id="recordProgress"></div></div>
+          <div class="progress-label">
+            <span id="recordTimeText">0.0 / 15.0 s</span>
+            <span id="recordMaxComp">Max live: —</span>
+          </div>
+          <div class="live-stats">
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveCompression">—</div>
+              <div class="live-stat-label">Live compression %</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val warn" id="liveMaxSoFar">—</div>
+              <div class="live-stat-label">Peak this session</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveRecordFrames">0</div>
+              <div class="live-stat-label">Frames captured</div>
+            </div>
+            <div class="live-stat">
+              <div class="live-stat-val" id="liveBounces">0</div>
+              <div class="live-stat-label">Impacts detected</div>
+            </div>
+          </div>
+          <button class="btn btn-record" id="recordBtn" type="button">Start Recording (15 s)</button>
+        </div>
+      </div>
+
+      <div class="error-box" id="errorBox"></div>
+    </section>
+
+    <section class="panel" id="processingPanel">
+      <div class="progress-box">
+        <div class="spinner"></div>
+        <div class="progress-text" id="progressText">Uploading…</div>
+        <div class="progress-sub" id="progressSub">Analyzing every frame for compression measurement</div>
+      </div>
+    </section>
+
+    <section class="panel" id="resultsPanel">
+      <p class="results-title">Analysis complete</p>
+      <div class="cards">
+        <div class="card">
+          <div class="card-val lime" id="valBaseline">—</div>
+          <div class="card-label">Baseline (mm)</div>
+        </div>
+        <div class="card highlight">
+          <div class="card-val coral" id="valCompression">—</div>
+          <div class="card-label">Max compression (%)</div>
+        </div>
+        <div class="card">
+          <div class="card-val teal" id="valBounces">—</div>
+          <div class="card-label">Bounces detected</div>
+        </div>
+      </div>
+      <div class="cards" style="margin-top:0.75rem; grid-template-columns: repeat(2,1fr);">
+        <div class="card">
+          <div class="card-val gold" id="valFrames">—</div>
+          <div class="card-label">Frames analyzed</div>
+        </div>
+        <div class="card">
+          <div class="card-val teal" id="valAccuracy">—</div>
+          <div class="card-label">Baseline stability</div>
+        </div>
+        <div class="card">
+          <div class="card-val gold" id="valConfidence">—</div>
+          <div class="card-label">Confidence score</div>
+        </div>
+      </div>
+      <div class="accuracy-banner" id="accuracyBanner" style="display:none;"></div>
+      <a class="btn btn-download" id="downloadBtn" href="#" download>⬇ Download Annotated Video</a>
+      <button class="btn again" id="againBtn">Test again</button>
+    </section>
+  </div>
+
+  <script>
+    const JPEG_QUALITY = 0.95;
+    const BASELINE_TARGET = 60;
+    const BASELINE_INTERVAL_MS = 55;
+    const RECORD_SECONDS = 15;
+    const LIVE_INTERVAL_MS = 200;
+    const MIN_STABILITY_PCT = 80;
+    const MIN_CONFIDENCE_PCT = 70;
+
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const fileName = document.getElementById("fileName");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const inputSection = document.getElementById("inputSection");
+    const processingPanel = document.getElementById("processingPanel");
+    const resultsPanel = document.getElementById("resultsPanel");
+    const progressText = document.getElementById("progressText");
+    const progressSub = document.getElementById("progressSub");
+    const errorBox = document.getElementById("errorBox");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const againBtn = document.getElementById("againBtn");
+    const steps = [document.getElementById("step1"), document.getElementById("step2"), document.getElementById("step3")];
+
+    const tabUpload = document.getElementById("tabUpload");
+    const tabCamera = document.getElementById("tabCamera");
+    const uploadPanel = document.getElementById("uploadPanel");
+    const cameraPanel = document.getElementById("cameraPanel");
+
+    const camVideos = [
+      document.getElementById("camVideo"),
+      document.getElementById("camVideo2"),
+      document.getElementById("camVideo3"),
+    ];
+    const camOverlays = [
+      document.getElementById("camOverlay"),
+      document.getElementById("camOverlay2"),
+      document.getElementById("camOverlay3"),
+    ];
+
+    let selectedFile = null;
+    let pollTimer = null;
+    let activeMode = "upload";
+
+    let camStream = null;
+    let liveTimer = null;
+    let camWizardStep = 1;
+    let baselineH = null;
+    let baselineMm = null;
+    let pxPerMm = null;
+    let baselineStability = null;
+    let baselineGoodFrames = null;
+    let ballType = "tennis";
+    let mediaRecorder = null;
+    let recordChunks = [];
+    let analyzingFrame = false;
+    let framesAnalyzed = 0;
+    let recordFrameCount = 0;
+    let liveMaxComp = 0;
+    let liveBounceCount = 0;
+    let inCompression = false;
+    let compHistory = [];
+    let detectionStreak = 0;
+    const captureCanvas = document.createElement("canvas");
+
+    function setStep(n) {
+      steps.forEach((s, i) => {
+        s.classList.remove("active", "done");
+        if (i + 1 < n) s.classList.add("done");
+        if (i + 1 === n) s.classList.add("active");
+      });
+    }
+
+    function setCamWizardStep(n) {
+      camWizardStep = n;
+      document.querySelectorAll(".cam-wiz-step").forEach((el) => {
+        const s = Number(el.dataset.camStep);
+        el.classList.toggle("active", s === n);
+        el.classList.toggle("done", s < n);
+      });
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById("camStep" + i).classList.toggle("active", i === n);
+      }
+    }
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add("show");
+    }
+
+    function clearError() {
+      errorBox.classList.remove("show");
+    }
+
+    function setMode(mode) {
+      activeMode = mode;
+      tabUpload.classList.toggle("active", mode === "upload");
+      tabCamera.classList.toggle("active", mode === "camera");
+      uploadPanel.classList.toggle("active", mode === "upload");
+      cameraPanel.classList.toggle("active", mode === "camera");
+      clearError();
+    }
+
+    tabUpload.addEventListener("click", () => setMode("upload"));
+    tabCamera.addEventListener("click", () => setMode("camera"));
+
+    document.querySelectorAll(".ball-type-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        ballType = btn.dataset.ball;
+        document.querySelectorAll(".ball-type-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+
+    document.getElementById("camNext1").addEventListener("click", () => {
+      document.querySelectorAll("#setupChecklist li").forEach((li) => li.classList.add("checked"));
+      setCamWizardStep(2);
+    });
+
+    document.getElementById("camNext2").addEventListener("click", () => {
+      if (!camStream) { showError("Start the camera first."); return; }
+      syncVideoElements();
+      resizeOverlays();
+      setCamWizardStep(3);
+      startLiveLoop();
+    });
+    document.getElementById("camNext3").addEventListener("click", () => {
+      syncVideoElements();
+      resizeOverlays();
+      setCamWizardStep(4);
+      startLiveLoop();
+    });
+
+    function pickFile(file) {
+      if (!file || !file.type.startsWith("video/")) {
+        showError("Please choose a video file (MP4, MOV, AVI).");
+        return;
+      }
+      clearError();
+      selectedFile = file;
+      fileName.textContent = "📎 " + file.name;
+      fileName.classList.add("show");
+      analyzeBtn.disabled = false;
+    }
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => { if (fileInput.files[0]) pickFile(fileInput.files[0]); });
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]);
+    });
+
+    async function pollStatus(jobId) {
+      const res = await fetch("/status/" + jobId);
+      if (!res.ok) throw new Error("Could not get status");
+      return res.json();
+    }
+
+    function showResults(jobId, results, downloadName, extra) {
+      setStep(3);
+      setCamWizardStep(5);
+      processingPanel.classList.remove("show");
+      resultsPanel.classList.add("show");
+
+      const r = results || {};
+      document.getElementById("valBaseline").textContent =
+        r.baseline_mm != null ? r.baseline_mm.toFixed(1) : "—";
+      document.getElementById("valCompression").textContent =
+        r.max_compression_pct != null ? r.max_compression_pct.toFixed(1) : "—";
+      document.getElementById("valBounces").textContent =
+        r.bounce_count != null ? r.bounce_count : "—";
+      document.getElementById("valFrames").textContent =
+        r.frames != null ? r.frames : "—";
+      if (r.detection_rate_pct != null) {
+        document.getElementById("valFrames").textContent =
+          r.frames + " (" + r.detection_rate_pct + "% tracked)";
+      }
+      document.getElementById("valAccuracy").textContent =
+        extra && extra.stability_pct != null ? extra.stability_pct + "%" : "—";
+      document.getElementById("valConfidence").textContent =
+        (r.confidence_pct != null ? r.confidence_pct : extra && extra.confidence_pct) != null
+          ? (r.confidence_pct || extra.confidence_pct) + "%" : "—";
+
+      const banner = document.getElementById("accuracyBanner");
+      if (extra && extra.good_frames != null) {
+        banner.style.display = "block";
+        banner.textContent =
+          "High-accuracy mode: " + extra.good_frames + " baseline frames · " +
+          (extra.stability_pct || "—") + "% stability · " +
+          (extra.confidence_pct || r.confidence_pct || "—") + "% confidence" +
+          (r.low_quality_mode ? " · low-quality enhance ON" : "");
+      } else {
+        banner.style.display = "none";
+      }
+
+      downloadBtn.href = "/download/" + jobId;
+      downloadBtn.download = downloadName;
+    }
+
+    function startPolling(jobId, downloadName, extra) {
+      pollTimer = setInterval(async () => {
+        try {
+          const s = await pollStatus(jobId);
+          if (s.progress) {
+            progressText.textContent = s.progress;
+            if (s.results && s.results.frames) {
+              progressSub.textContent = "Processed " + s.results.frames + " frames…";
+            }
+          }
+          if (s.status === "completed") {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            showResults(jobId, s.results, downloadName, extra);
+          }
+          if (s.status === "failed") {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            throw new Error(s.error || "Processing failed");
+          }
+        } catch (e) {
+          if (pollTimer) clearInterval(pollTimer);
+          pollTimer = null;
+          resetUI();
+          showError(e.message);
+        }
+      }, 1200);
+    }
+
+    async function processFile(file, downloadName, extra) {
+      clearError();
+      setStep(2);
+      inputSection.style.display = "none";
+      processingPanel.classList.add("show");
+      progressText.textContent = "Uploading video…";
+      progressSub.textContent = "Every frame will be analyzed for ball compression";
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("ball_type", ballType);
+      if (extra && extra.baseline_h_px) form.append("baseline_h_px", String(extra.baseline_h_px));
+      if (extra && extra.px_per_mm) form.append("px_per_mm", String(extra.px_per_mm));
+      if (extra && extra.confidence_pct) form.append("confidence_pct", String(extra.confidence_pct));
+      const up = await fetch("/upload", { method: "POST", body: form });
+      if (!up.ok) {
+        const err = await up.json().catch(() => ({}));
+        throw new Error(err.detail || "Upload failed");
+      }
+      const { job_id } = await up.json();
+      progressText.textContent = "Analyzing frames…";
+      startPolling(job_id, downloadName, extra);
+    }
+
+    analyzeBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+      try {
+        await processFile(selectedFile, selectedFile.name.replace(/\.[^.]+$/, "") + "-TRACKED.mp4", null);
+      } catch (e) {
+        resetUI();
+        showError(e.message);
+      }
+    });
+
+    function activeVideo() {
+      return camVideos[camWizardStep - 2] || camVideos[0];
+    }
+
+    function activeOverlay() {
+      return camOverlays[camWizardStep - 2] || camOverlays[0];
+    }
+
+    function syncVideoElements() {
+      if (!camStream) return;
+      camVideos.forEach((v) => {
+        if (v.srcObject !== camStream) v.srcObject = camStream;
+      });
+    }
+
+    function resizeOverlays() {
+      const v = camVideos[0];
+      const w = v.videoWidth;
+      const h = v.videoHeight;
+      if (!w || !h) return;
+      camOverlays.forEach((c) => { c.width = w; c.height = h; });
+      captureCanvas.width = w;
+      captureCanvas.height = h;
+      document.getElementById("liveResolution").textContent = w + "×" + h;
+    }
+
+    function drawGuideAndOverlay(result, canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const gw = canvas.width * 0.35;
+      const gh = canvas.height * 0.55;
+      ctx.strokeStyle = "rgba(200,241,53,0.35)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.strokeRect(cx - gw / 2, cy - gh / 2, gw, gh);
+      ctx.setLineDash([]);
+
+      if (!result || !result.ellipse) return;
+
+      const e = result.ellipse;
+      const compressing = result.status === "compressing" || (result.compression_pct || 0) > 6;
+      ctx.strokeStyle = compressing ? "#ff6b4a" : "#c8f135";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(e.cx, e.cy, e.a, e.b, (e.angle * Math.PI) / 180, 0, Math.PI * 2);
+      ctx.stroke();
+
+      if (result.compression_pct != null && baselineH) {
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 20px DM Sans, sans-serif";
+        ctx.fillText(result.compression_pct.toFixed(1) + "%", e.cx - 28, e.cy - e.b - 10);
+      }
+    }
+
+    async function captureJpegBlob() {
+      const v = activeVideo();
+      const w = v.videoWidth;
+      const h = v.videoHeight;
+      if (!w || !h) return null;
+      captureCanvas.getContext("2d").drawImage(v, 0, 0, w, h);
+      return new Promise((resolve) => captureCanvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+    }
+
+    async function analyzeLiveFrame() {
+      if (!camStream || analyzingFrame || activeVideo().readyState < 2) return;
+      analyzingFrame = true;
+      try {
+        const blob = await captureJpegBlob();
+        if (!blob) return;
+
+        const form = new FormData();
+        form.append("file", blob, "frame.jpg");
+        form.append("ball_type", ballType);
+        if (baselineH != null) {
+          form.append("baseline_h", String(baselineH));
+          if (pxPerMm) form.append("px_per_mm", String(pxPerMm));
+        }
+
+        const res = await fetch("/analyze-frame", { method: "POST", body: form });
+        if (!res.ok) return;
+        const data = await res.json();
+        framesAnalyzed++;
+        document.getElementById("liveFrames").textContent = framesAnalyzed;
+
+        const statusEl = document.getElementById("liveStatus");
+        const qualityEl = document.getElementById("liveQuality");
+        const badge = document.getElementById("camBadge");
+
+        if (data.detected) {
+          detectionStreak++;
+          statusEl.textContent = data.status === "compressing" ? "Compressing" : "Tracking";
+          statusEl.className = "live-stat-val" + (data.status === "compressing" ? " warn" : " teal");
+          const qLabel = data.low_quality_mode ? (data.subpixel ? "LQ+SUB" : "LQ+ENH") : "Good";
+          qualityEl.textContent = qLabel;
+          qualityEl.className = "live-stat-val teal";
+          badge.textContent = data.low_quality_mode ? "LQ enhance ON ✓" : "Tracking ✓";
+          badge.classList.toggle("warn", !!data.low_quality_mode);
+
+          if (camWizardStep === 2 && detectionStreak >= 8) {
+            document.getElementById("camNext2").disabled = false;
+          }
+
+          if (camWizardStep === 3 && data.diameter_mm) {
+            document.getElementById("liveDiameter").textContent = data.diameter_mm.toFixed(1);
+          }
+
+          if (camWizardStep === 4 && baselineH) {
+            compHistory.push(data.compression_pct || 0);
+            if (compHistory.length > 5) compHistory.shift();
+            const smoothed = compHistory.slice().sort((a, b) => a - b)[Math.floor(compHistory.length / 2)];
+            document.getElementById("liveCompression").textContent = smoothed.toFixed(1);
+            if (smoothed > liveMaxComp) {
+              liveMaxComp = smoothed;
+              document.getElementById("liveMaxSoFar").textContent = liveMaxComp.toFixed(1);
+              document.getElementById("recordMaxComp").textContent = "Max live: " + liveMaxComp.toFixed(1) + "%";
+            }
+            if (smoothed > 10 && !inCompression) {
+              inCompression = true;
+              liveBounceCount++;
+              document.getElementById("liveBounces").textContent = liveBounceCount;
+            } else if (smoothed < 4 && inCompression) {
+              inCompression = false;
+            }
+          }
+        } else {
+          detectionStreak = 0;
+          statusEl.textContent = data.status === "partial" ? "Partial" : "Searching";
+          statusEl.className = "live-stat-val";
+          qualityEl.textContent = "—";
+          badge.textContent = data.status === "partial" ? "Ball cut off" : "Searching…";
+          badge.classList.add("warn");
+          if (camWizardStep === 2) document.getElementById("camNext2").disabled = true;
+        }
+
+        drawGuideAndOverlay(data, activeOverlay());
+      } finally {
+        analyzingFrame = false;
+      }
+    }
+
+    function stopLiveLoop() {
+      if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+    }
+
+    function startLiveLoop() {
+      stopLiveLoop();
+      liveTimer = setInterval(analyzeLiveFrame, LIVE_INTERVAL_MS);
+    }
+
+    document.getElementById("startCamBtn").addEventListener("click", async () => {
+      if (camStream) {
+        stopCamera();
+        return;
+      }
+      clearError();
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, min: 24 },
+          },
+          audio: false,
+        });
+        camVideos.forEach((v) => { v.srcObject = camStream; });
+        document.getElementById("cameraPlaceholder").style.display = "none";
+        camVideos[0].onloadedmetadata = () => {
+          resizeOverlays();
+          document.getElementById("camBadge").textContent = "Camera ready";
+        };
+        document.getElementById("startCamBtn").textContent = "Stop Camera";
+        startLiveLoop();
+      } catch (e) {
+        showError("Camera access denied. Use Chrome/Edge on localhost or HTTPS.");
+      }
+    });
+
+    function stopCamera() {
+      stopLiveLoop();
+      if (mediaRecorder && mediaRecorder.state !== "recording") {
+        try { mediaRecorder.stop(); } catch (_) {}
+      }
+      if (camStream) {
+        camStream.getTracks().forEach((t) => t.stop());
+        camStream = null;
+      }
+      camVideos.forEach((v) => { v.srcObject = null; });
+      document.getElementById("cameraPlaceholder").style.display = "flex";
+      document.getElementById("startCamBtn").textContent = "Start Camera";
+      document.getElementById("camBadge").textContent = "Camera off";
+    }
+
+    document.getElementById("baselineBtn").addEventListener("click", async () => {
+      if (!camStream) { showError("Start the camera first (Step 2)."); return; }
+      clearError();
+      syncVideoElements();
+      const btn = document.getElementById("baselineBtn");
+      btn.disabled = true;
+      document.getElementById("baselineBadge").textContent = "Capturing…";
+
+      const frameBlobs = [];
+      for (let i = 0; i < BASELINE_TARGET; i++) {
+        const blob = await captureJpegBlob();
+        if (blob) frameBlobs.push(blob);
+        const pct = ((i + 1) / BASELINE_TARGET) * 100;
+        document.getElementById("baselineProgress").style.width = pct + "%";
+        document.getElementById("baselineProgressText").textContent = (i + 1) + " / " + BASELINE_TARGET + " frames";
+        await analyzeLiveFrame();
+        await new Promise((r) => setTimeout(r, BASELINE_INTERVAL_MS));
+      }
+
+      const form = new FormData();
+      frameBlobs.forEach((b, i) => form.append("files", b, "baseline_" + i + ".jpg"));
+      form.append("ball_type", ballType);
+
+      const res = await fetch("/analyze-baseline", { method: "POST", body: form });
+      const data = await res.json();
+
+      if (!data.ok) {
+        showError(
+          "Baseline failed — " + (data.good_frames || 0) + " good frames (need " +
+          (data.min_required || 40) + "). Keep ball perfectly still, round, and centered."
+        );
+        document.getElementById("baselineBadge").textContent = "Retry needed";
+        document.getElementById("baselineQualityText").textContent = "Quality " + (data.quality_pct || 0) + "%";
+        btn.disabled = false;
+        return;
+      }
+
+      if (data.stability_pct < (data.low_quality_mode ? 70 : MIN_STABILITY_PCT)) {
+        showError("Stability too low (" + data.stability_pct + "%). Hold the ball more still and re-capture.");
+        document.getElementById("baselineBadge").textContent = "Unstable — retry";
+        btn.disabled = false;
+        return;
+      }
+
+      baselineH = data.baseline_minor_px || data.baseline_h_px;
+      baselineMm = data.baseline_mm;
+      pxPerMm = data.px_per_mm;
+      baselineStability = data.stability_pct;
+      baselineConfidence = data.confidence_pct;
+      baselineGoodFrames = data.good_frames;
+
+      document.getElementById("liveBaseline").textContent = data.baseline_mm.toFixed(1);
+      document.getElementById("liveStability").textContent = data.stability_pct + "%";
+      document.getElementById("liveConfidence").textContent = data.confidence_pct + "%";
+      document.getElementById("baselineQualityText").textContent = "Quality " + data.quality_pct + "%";
+      document.getElementById("baselineBadge").textContent = "Baseline locked ✓";
+
+      if (data.confidence_pct >= (data.low_quality_mode ? 60 : MIN_CONFIDENCE_PCT)) {
+        document.getElementById("camNext3").disabled = false;
+      } else {
+        showError("Confidence " + data.confidence_pct + "% is below " + MIN_CONFIDENCE_PCT + "%. Re-capture baseline.");
+      }
+      btn.disabled = false;
+      btn.textContent = "Re-capture 60 Frames";
+    });
+
+    document.getElementById("recordBtn").addEventListener("click", async () => {
+      if (!camStream || !baselineH) return;
+      clearError();
+      syncVideoElements();
+
+      const overlay = document.getElementById("countdownOverlay");
+      for (let c = 3; c >= 1; c--) {
+        overlay.textContent = c;
+        overlay.classList.add("show");
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      overlay.classList.remove("show");
+
+      recordChunks = [];
+      recordFrameCount = 0;
+      liveMaxComp = 0;
+      liveBounceCount = 0;
+      compHistory = [];
+      inCompression = false;
+
+      const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9" : "video/webm";
+      mediaRecorder = new MediaRecorder(camStream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.push(e.data); };
+
+      const extraMeta = {
+        good_frames: baselineGoodFrames,
+        stability_pct: baselineStability,
+        confidence_pct: baselineConfidence,
+        baseline_h_px: baselineH,
+        px_per_mm: pxPerMm,
+      };
+
+      mediaRecorder.onstop = async () => {
+        document.getElementById("recordBtn").textContent = "Start Recording (15 s)";
+        document.getElementById("recordBtn").classList.remove("btn-recording");
+        document.getElementById("recordBtn").disabled = false;
+        document.getElementById("recordBadge").textContent = "Processing…";
+        stopLiveLoop();
+
+        const blob = new Blob(recordChunks, { type: mime });
+        const ext = mime.includes("webm") ? "webm" : "mp4";
+        const file = new File([blob], "live-camera-test." + ext, { type: mime });
+        try {
+          await processFile(file, "live-camera-test-TRACKED.mp4", extraMeta);
+        } catch (e) {
+          resetUI();
+          showError(e.message);
+        }
+      };
+
+      const recordBtn = document.getElementById("recordBtn");
+      recordBtn.disabled = true;
+      recordBtn.textContent = "Recording…";
+      recordBtn.classList.add("btn-recording");
+      document.getElementById("recordBadge").textContent = "REC ●";
+
+      const recordStart = Date.now();
+      const tick = setInterval(() => {
+        const elapsed = (Date.now() - recordStart) / 1000;
+        document.getElementById("recordProgress").style.width = Math.min(100, (elapsed / RECORD_SECONDS) * 100) + "%";
+        document.getElementById("recordTimeText").textContent = elapsed.toFixed(1) + " / " + RECORD_SECONDS + ".0 s";
+        recordFrameCount++;
+        document.getElementById("liveRecordFrames").textContent = recordFrameCount;
+      }, 200);
+
+      mediaRecorder.start(250);
+      startLiveLoop();
+
+      setTimeout(() => {
+        clearInterval(tick);
+        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+      }, RECORD_SECONDS * 1000);
+    });
+
+    function resetUI() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+      setStep(1);
+      setCamWizardStep(1);
+      processingPanel.classList.remove("show");
+      resultsPanel.classList.remove("show");
+      inputSection.style.display = "block";
+
+      baselineH = null;
+      baselineMm = null;
+      pxPerMm = null;
+      baselineStability = null;
+      baselineConfidence = null;
+      framesAnalyzed = 0;
+      detectionStreak = 0;
+      compHistory = [];
+      liveMaxComp = 0;
+      liveBounceCount = 0;
+
+      document.getElementById("liveBaseline").textContent = "—";
+      document.getElementById("liveCompression").textContent = "—";
+      document.getElementById("liveStability").textContent = "—";
+      document.getElementById("baselineProgress").style.width = "0%";
+      document.getElementById("recordProgress").style.width = "0%";
+      document.getElementById("camNext2").disabled = true;
+      document.getElementById("camNext3").disabled = true;
+      document.getElementById("liveConfidence").textContent = "—";
+      document.getElementById("baselineBtn").textContent = "Capture 60 Frames";
+      document.querySelectorAll("#setupChecklist li").forEach((li) => li.classList.remove("checked"));
+
+      if (activeMode === "upload") analyzeBtn.disabled = !selectedFile;
+      if (camStream && camWizardStep >= 2) startLiveLoop();
+    }
+
+    againBtn.addEventListener("click", () => {
+      selectedFile = null;
+      fileInput.value = "";
+      fileName.classList.remove("show");
+      analyzeBtn.disabled = true;
+      resetUI();
+    });
+
+    setStep(1);
+    setCamWizardStep(1);
+  </script>
+</body>
+</html>

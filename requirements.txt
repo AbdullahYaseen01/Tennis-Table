@@ -1,0 +1,9 @@
+opencv-python
+numpy
+scipy
+PySide6
+pyqtgraph
+ultralytics
+fastapi
+uvicorn[standard]
+python-multipart

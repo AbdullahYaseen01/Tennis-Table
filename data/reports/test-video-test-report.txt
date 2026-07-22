@@ -1,0 +1,25 @@
+TENNIS BALL CONDITION TEST REPORT
+========================================
+Video:              Test video.mp4
+Test date:          2026-07-21T19:12:01
+Ball type:          tennis
+
+DETECTION
+  Frames analyzed:  281
+  Detection rate:   84.0%
+  Mean confidence:  0.654
+
+CALIBRATION
+  Scale:            1.585 px/mm
+  Rest diameter:    78.74 mm  (ITF spec 67.0 mm)
+  Rest error:       +17.53%
+  Jitter (std):     81.079 mm
+
+COMPRESSION TEST
+  Baseline:         44.34 mm
+  Max compression:  48.6%
+
+RECOVERY
+  Not completed (state: RECOVERING)
+
+Test completed:     No
