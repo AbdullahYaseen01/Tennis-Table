@@ -1,0 +1,13 @@
+.venv
+venv
+data/samples
+data/reports
+data/uploads
+data/outputs
+app/ui
+yolov8n.pt
+*.mp4
+*.avi
+*.pdf
+*.pt
+requirements-local.txt

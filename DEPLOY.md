@@ -16,16 +16,21 @@
 ## Local full app (desktop + all features)
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-local.txt
 uvicorn app.api.main:app --host 0.0.0.0 --port 8000
 python app/main.py   # PySide6 desktop app
 ```
+
+## Why two requirements files?
+
+- `requirements.txt` — slim deps for Vercel (OpenCV headless + FastAPI only, under 500 MB)
+- `requirements-local.txt` — full desktop stack (PySide6, ultralytics, scipy, etc.)
 
 ## Vercel limits
 
 - **Function timeout**: 10s (Hobby) / 60s (Pro) — long videos may need Pro or a separate worker
 - **No ffmpeg** on Vercel by default — MP4 conversion may fall back to AVI
 - **Ephemeral storage** — uploads use `/tmp`; files are not kept after the function ends
-- **OpenCV** uses `opencv-python-headless` (see `requirements-vercel.txt`)
+- **OpenCV** uses `opencv-python-headless` (see `requirements.txt`)
 
 For production with heavy video processing, consider **Railway**, **Render**, or **Fly.io** with Docker + ffmpeg.

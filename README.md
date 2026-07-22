@@ -10,7 +10,7 @@ A desktop application (Python + OpenCV + PySide6) that measures tennis ball and 
 cd tennis-ball-tester
 python -m venv .venv
 .venv\Scripts\activate        # Windows
-pip install -r requirements.txt
+pip install -r requirements-local.txt
 ```
 
 Generate the sample video and dev calibration (no camera required):
@@ -167,4 +167,4 @@ tennis-ball-tester/
 
 ## Optional: YOLO Detector
 
-Classical CV (colour segmentation + sub-pixel ellipse) is the primary path. To experiment with YOLO, uncomment `ultralytics` in `requirements.txt` and wire it as an alternate detector — not required for normal operation.
+Classical CV (colour segmentation + sub-pixel ellipse) is the primary path. To experiment with YOLO, uncomment `ultralytics` in `requirements-local.txt` and wire it as an alternate detector — not required for normal operation.

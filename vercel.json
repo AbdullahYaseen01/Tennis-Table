@@ -1,18 +1,18 @@
 {
-  "version": 2,
-  "installCommand": "pip install -r requirements-vercel.txt",
-  "builds": [
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pip install -r requirements.txt",
+  "rewrites": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+      "source": "/(.*)",
+      "destination": "/api/index"
     }
   ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{.venv/**,venv/**,data/samples/**,data/reports/**,data/uploads/**,data/outputs/**,app/ui/**,app/main.py,scripts/test_*.py,scripts/generate_*.py,requirements-local.txt,yolov8n.pt,**/*.mp4,**/*.avi,**/*.pdf,**/*.pt}"
     }
-  ],
+  },
   "env": {
     "VERCEL": "1"
   }

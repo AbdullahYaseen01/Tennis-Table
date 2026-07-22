@@ -1,9 +1,5 @@
-opencv-python
-numpy
-scipy
-PySide6
-pyqtgraph
-ultralytics
-fastapi
-uvicorn[standard]
-python-multipart
+# Vercel / serverless web demo only (must stay under 500 MB bundle limit).
+opencv-python-headless>=4.8.0,<5
+numpy>=1.24.0,<3
+fastapi>=0.100.0
+python-multipart>=0.0.6
