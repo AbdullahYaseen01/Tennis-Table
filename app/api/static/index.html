@@ -770,9 +770,14 @@
         const err = await up.json().catch(() => ({}));
         throw new Error(err.detail || "Upload failed");
       }
-      const { job_id } = await up.json();
+      const data = await up.json();
+      if (data.status === "completed") {
+        progressText.textContent = "Done";
+        showResults(data.job_id, data.results, downloadName, extra);
+        return;
+      }
       progressText.textContent = "Analyzing frames…";
-      startPolling(job_id, downloadName, extra);
+      startPolling(data.job_id, downloadName, extra);
     }
 
     analyzeBtn.addEventListener("click", async () => {

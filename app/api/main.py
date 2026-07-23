@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.api.jobs import JobStatus, job_store
+from app.config import IS_VERCEL
 from app.services.live_frame import (
     analyze_jpeg_bytes,
     compute_baseline_from_frames,
@@ -134,6 +136,16 @@ async def upload_video(
         },
     )
 
+    if IS_VERCEL:
+        logger.info("Job %s processing inline (Vercel): %s", job.id, file.filename)
+        try:
+            payload = _process_job_sync(job.id)
+            return JSONResponse(status_code=200, content=payload)
+        except Exception as exc:
+            logger.exception("Job %s failed", job.id)
+            job_store.update(job.id, status=JobStatus.FAILED, error=str(exc), progress="Failed")
+            raise HTTPException(500, f"Video processing failed: {exc}") from exc
+
     _executor.submit(_run_job, job.id)
     logger.info("Job %s queued: %s", job.id, file.filename)
 
@@ -147,6 +159,43 @@ async def upload_video(
             "download_url": f"/download/{job.id}",
         },
     )
+
+
+def _process_job_sync(job_id: str) -> dict:
+    """Process video inline — required on Vercel (no background threads)."""
+    job = job_store.get(job_id)
+    if job is None:
+        raise ValueError("Job not found")
+
+    job_store.update(job_id, status=JobStatus.PROCESSING, progress="Starting…")
+
+    def on_progress(msg: str) -> None:
+        job_store.update(job_id, progress=msg)
+
+    opts = job.process_opts or {}
+    out_path, metrics = process_video(
+        job.input_path,
+        job_id,
+        on_progress=on_progress,
+        ball_type=opts.get("ball_type", "tennis"),
+        fixed_baseline_px=opts.get("baseline_h_px"),
+        fixed_px_per_mm=opts.get("px_per_mm"),
+    )
+    if opts.get("confidence_pct") is not None:
+        metrics["confidence_pct"] = opts["confidence_pct"]
+
+    job_store.update(
+        job_id,
+        status=JobStatus.COMPLETED,
+        output_path=out_path,
+        results=metrics,
+        progress="Done",
+    )
+    logger.info("Job %s completed: %s", job_id, metrics)
+    job = job_store.get(job_id)
+    payload = job.to_dict() if job else {"job_id": job_id, "status": "completed", "results": metrics}
+    payload["download_url"] = f"/download/{job_id}"
+    return payload
 
 
 @app.get("/status/{job_id}")

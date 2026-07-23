@@ -10,7 +10,8 @@
   "functions": {
     "api/**/*.py": {
       "maxDuration": 60,
-      "excludeFiles": "{.venv/**,venv/**,data/samples/**,data/reports/**,data/uploads/**,data/outputs/**,app/ui/**,app/main.py,scripts/test_*.py,scripts/generate_*.py,requirements-local.txt,yolov8n.pt,**/*.mp4,**/*.avi,**/*.pdf,**/*.pt}"
+      "memory": 3008,
+      "excludeFiles": "{.venv/**,venv/**,data/samples/**,data/reports/**,data/uploads/**,data/outputs/**,app/ui/**,app/main.py,scripts/test_*.py,scripts/generate_*.py,scripts/debug_*.py,scripts/analyze_*.py,requirements-local.txt,yolov8n.pt,**/*.mp4,**/*.avi,**/*.pdf,**/*.pt,**/*.jpg}"
     }
   },
   "env": {

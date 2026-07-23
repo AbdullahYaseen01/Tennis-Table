@@ -12,12 +12,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.config import IS_VERCEL
 from scripts.export_bounce_video import export as export_bounce
 
 logger = logging.getLogger(__name__)
 
-# Use /tmp on Vercel (ephemeral, writable serverless filesystem)
-_DATA_ROOT = Path("/tmp") if os.environ.get("VERCEL") else ROOT
+_DATA_ROOT = Path("/tmp") if IS_VERCEL else ROOT
 UPLOADS_DIR = _DATA_ROOT / "data" / "uploads"
 OUTPUTS_DIR = _DATA_ROOT / "data" / "outputs"
 
@@ -51,31 +51,39 @@ def process_video(
     fixed_baseline_px: float | None = None,
     fixed_px_per_mm: float | None = None,
 ) -> tuple[Path, dict]:
-    """
-    Run bounce/compression tracker and return (output_mp4_path, results_dict).
-    """
+    """Run bounce/compression tracker and return (output_mp4_path, results_dict)."""
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if on_progress:
         on_progress("Analyzing video…")
 
-    avi_out = OUTPUTS_DIR / f"{job_id}-tracked.avi"
-    mp4_out = OUTPUTS_DIR / f"{job_id}-tracked.mp4"
+    out_path = OUTPUTS_DIR / f"{job_id}-tracked.mp4"
 
     if on_progress:
         on_progress("Tracking ball and measuring compression…")
 
     metrics = export_bounce(
         input_path,
-        avi_out,
+        out_path,
         ball_type=ball_type,
         fixed_baseline_px=fixed_baseline_px,
         fixed_px_per_mm=fixed_px_per_mm,
+        fast_mode=IS_VERCEL,
+        use_yolo=not IS_VERCEL,
     )
 
     if on_progress:
-        on_progress("Converting to MP4…")
+        on_progress("Finalizing video…")
 
-    final_path = _to_mp4(avi_out, mp4_out)
+    # OpenCV mp4v usually works on Vercel; convert if we got AVI fallback
+    if out_path.suffix.lower() == ".avi" or not out_path.exists():
+        avi = out_path.with_suffix(".avi")
+        if avi.exists():
+            final_path = _to_mp4(avi, OUTPUTS_DIR / f"{job_id}-tracked.mp4")
+        else:
+            final_path = out_path
+    else:
+        final_path = out_path
+
     return final_path, metrics

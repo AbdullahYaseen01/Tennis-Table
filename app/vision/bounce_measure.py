@@ -354,7 +354,8 @@ def is_valid_measurement(
 
     if height_px < min_ball:
         return False
-    if touches_edge and not low_quality:
+    # Allow near-edge detections when the ball itself is clearly round (in-air near top)
+    if touches_edge and not low_quality and roundness < 0.88:
         return False
     if touches_edge and low_quality and (bx <= 0 or (bx + bbw) >= frame_w - 1):
         return False
@@ -377,6 +378,7 @@ def analyze_ball_in_frame(
     ball_type: str = "tennis",
     baseline_minor_px: float | None = None,
     px_per_mm: float | None = None,
+    roi_hint: tuple[float, float, float] | None = None,
 ) -> dict:
     if frame is None:
         return {"detected": False, "status": "searching"}
@@ -390,15 +392,42 @@ def analyze_ball_in_frame(
     enhanced, scale = enhance_frame(frame, quality)
     inv = 1.0 / scale
 
+    search = enhanced
+    offset_x = offset_y = 0.0
+    if roi_hint is not None:
+        hx, hy, hr = roi_hint
+        pad = max(hr * 1.8, min_ball * 1.5)
+        x0 = max(0, int(hx * scale - pad * scale))
+        y0 = max(0, int(hy * scale - pad * scale))
+        x1 = min(enhanced.shape[1], int(hx * scale + pad * scale))
+        y1 = min(enhanced.shape[0], int(hy * scale + pad * scale))
+        if x1 - x0 > 20 and y1 - y0 > 20:
+            search = enhanced[y0:y1, x0:x1]
+            offset_x, offset_y = float(x0), float(y0)
+
     d = detect_on_frame(
-        enhanced, ball_type=ball_type,
+        search, ball_type=ball_type,
         min_area=max(180.0, min_ball * min_ball * 0.30),
-        frame_w=enhanced.shape[1],
+        frame_w=search.shape[1],
     )
+    if d is None and roi_hint is not None:
+        # Fall back to full frame if ROI miss
+        d = detect_on_frame(
+            enhanced, ball_type=ball_type,
+            min_area=max(180.0, min_ball * min_ball * 0.30),
+            frame_w=enhanced.shape[1],
+        )
+        offset_x = offset_y = 0.0
+        search = enhanced
+
     if d is None:
         return {"detected": False, "status": "searching", "low_quality_mode": low_q}
 
     ecx, ecy, ebw, ebh, econtour = d
+    ecx += offset_x
+    ecy += offset_y
+    econtour = econtour + np.array([[[offset_x, offset_y]]], dtype=econtour.dtype)
+
     ell = measure_refined(enhanced, econtour, ecx, ecy, ebw, ebh, low_quality=low_q)
     if ell is None:
         return {"detected": False, "status": "searching", "low_quality_mode": low_q}
@@ -408,11 +437,29 @@ def analyze_ball_in_frame(
             ell[key] *= inv
         e = ell["ellipse"]
         ell["ellipse"] = {**e, "cx": e["cx"] * inv, "cy": e["cy"] * inv, "a": e["a"] * inv, "b": e["b"] * inv}
+        econtour = (econtour.astype(np.float64) * inv).astype(np.int32)
 
-    cx, cy, bw, bh = ell["cx"], ell["cy"], ell["major_px"], ell["minor_px"]
-    bx, by, bbw, bbh = cv2.boundingRect((econtour.astype(np.float64) * inv).astype(np.int32))
-    bh = float(bbh)
-    bw = float(bbw)
+    # Shadow merge recovery: if blob is oversized vs baseline, re-detect in a tight ROI
+    load_px = _load_axis_extent_px(ell["ellipse"], vertical=True)
+    if (
+        baseline_minor_px
+        and baseline_minor_px > 0
+        and load_px > baseline_minor_px * 1.08
+        and roi_hint is None
+    ):
+        retry = analyze_ball_in_frame(
+            frame,
+            ball_type=ball_type,
+            baseline_minor_px=baseline_minor_px,
+            px_per_mm=px_per_mm,
+            roi_hint=(ell["cx"], ell["cy"], baseline_minor_px * 0.55),
+        )
+        if retry.get("detected"):
+            return retry
+
+    cx, cy = ell["cx"], ell["cy"]
+    bx, by, bbw, bbh = cv2.boundingRect(econtour)
+    bw, bh = float(bbw), float(bbh)
 
     meas = {
         **ell,
@@ -424,22 +471,36 @@ def analyze_ball_in_frame(
         meas, frame_w=w_img, baseline_minor_px=baseline_minor_px,
         ball_type=ball_type, low_quality=low_q,
     ):
+        # Still return ellipse for overlay continuity; mark as partial track
         return {
             "detected": False,
             "status": "partial",
+            "cx": cx, "cy": cy,
             "ellipse": ell["ellipse"],
             "roundness": ell["roundness"],
             "low_quality_mode": low_q,
+            "load_axis_px": round(load_px, 1),
         }
 
     ref_mm = profile["diameter_mm"]
     if px_per_mm is None or px_per_mm <= 0:
-        px_per_mm = (baseline_minor_px / ref_mm) if baseline_minor_px else bh / ref_mm
+        px_per_mm = (baseline_minor_px / ref_mm) if baseline_minor_px else load_px / ref_mm
 
-    load_px = float(bh)
+    load_px = _load_axis_extent_px(ell["ellipse"], vertical=True)
+    # Prefer ellipse minor axis when vertical projection is inflated by rotation/shadow
+    minor_px = float(ell["minor_px"])
+    if baseline_minor_px and load_px > baseline_minor_px * 1.05 and minor_px < load_px:
+        load_px = minor_px
+
+    oversize = bool(baseline_minor_px and load_px > baseline_minor_px * 1.12)
+    undersize = bool(baseline_minor_px and load_px < baseline_minor_px * 0.55)
     compression_pct = 0.0
-    if baseline_minor_px and baseline_minor_px > 0:
+    if baseline_minor_px and baseline_minor_px > 0 and not oversize and not undersize:
         compression_pct = max(0.0, (baseline_minor_px - load_px) / baseline_minor_px * 100.0)
+    # Impact compression above ~30% on phone video is almost always a bad contour
+    if compression_pct > 30.0 and ell["roundness"] > 0.78:
+        compression_pct = 0.0
+        oversize = True
 
     return {
         "detected": True,
@@ -448,50 +509,82 @@ def analyze_ball_in_frame(
         "low_quality_mode": low_q,
         "enhanced": low_q,
         "subpixel": ell.get("refined", False),
+        "oversize_clamped": oversize,
         "cx": cx, "cy": cy,
         "major_px": round(ell["major_px"], 1),
         "minor_px": round(ell["minor_px"], 1),
         "width_px": float(bw),
         "height_px": float(bh),
-        "diameter_mm": round(load_px / px_per_mm, 1),
+        "load_axis_px": round(load_px if not oversize else (baseline_minor_px or load_px), 1),
+        "diameter_mm": round((load_px if not oversize else (baseline_minor_px or load_px)) / px_per_mm, 1),
         "compression_pct": round(compression_pct, 1),
         "roundness": ell["roundness"],
         "ellipse": ell["ellipse"],
     }
 
 
-def compute_baseline_from_video(cap: cv2.VideoCapture, ball_type: str = "tennis") -> tuple[float, float]:
-    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-    ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])["diameter_mm"]
-    minors: list[float] = []
+def _load_axis_extent_px(ellipse: dict, *, vertical: bool = True) -> float:
+    """Projected diameter along the load axis (vertical for floor bounce videos)."""
+    a = float(ellipse["a"])
+    b = float(ellipse["b"])
+    theta = np.deg2rad(float(ellipse["angle"]))
+    if vertical:
+        return 2.0 * float(np.sqrt((a * np.sin(theta)) ** 2 + (b * np.cos(theta)) ** 2))
+    return 2.0 * float(np.sqrt((a * np.cos(theta)) ** 2 + (b * np.sin(theta)) ** 2))
 
-    while True:
+
+def compute_baseline_from_video(
+    cap: cv2.VideoCapture,
+    ball_type: str = "tennis",
+    *,
+    prefer_in_air: bool = True,
+) -> tuple[float, float]:
+    """Establish rest diameter from round in-air frames before ground contact."""
+    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])["diameter_mm"]
+    rnd_min = _roundness_min(ball_type)
+    asp_min, asp_max = _aspect_bounds(ball_type)
+
+    rest_extents: list[float] = []
+    fallback: list[float] = []
+    max_scan = int(min(fps * 4.0, 120))
+
+    for idx in range(max_scan):
         ok, frame = cap.read()
         if not ok:
             break
         r = analyze_ball_in_frame(frame, ball_type=ball_type)
-        if not r.get("detected"):
+        if not r.get("detected") or not r.get("ellipse"):
             continue
-        aspect = r["height_px"] / max(r.get("width_px") or r["major_px"], 1.0)
-        asp_min, asp_max = _aspect_bounds(ball_type)
-        rnd_min = _roundness_min(ball_type) - (0.12 if r.get("low_quality_mode") else 0.0)
-        if r.get("roundness", 0) >= rnd_min and asp_min <= aspect <= asp_max:
-            minors.append(float(r["height_px"]))
+        extent = _load_axis_extent_px(r["ellipse"], vertical=True)
+        aspect = extent / max(r.get("width_px") or r["major_px"], 1.0)
+        rnd = float(r.get("roundness", 0))
+        cy = float(r.get("cy", frame_h * 0.5))
+        in_air = prefer_in_air and frame_h > 0 and cy < frame_h * 0.62
+        is_round = rnd >= rnd_min and asp_min <= aspect <= asp_max
+        if is_round and (in_air or not prefer_in_air):
+            rest_extents.append(extent)
+        elif rnd >= rnd_min - 0.05:
+            fallback.append(extent)
 
-    if not minors:
+    samples = rest_extents if len(rest_extents) >= 8 else fallback
+    if not samples:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         while True:
             ok, frame = cap.read()
             if not ok:
                 break
             r = analyze_ball_in_frame(frame, ball_type=ball_type)
-            if r.get("detected") and r.get("height_px"):
-                minors.append(float(r["height_px"]))
+            if r.get("detected") and r.get("ellipse"):
+                samples.append(_load_axis_extent_px(r["ellipse"], vertical=True))
 
-    if not minors:
+    if not samples:
         return 305.0, 305.0 / ref_mm
 
-    return _robust_median(minors), _robust_median(minors) / ref_mm
+    baseline_px = _robust_median(samples)
+    return baseline_px, baseline_px / ref_mm
 
 
 def compute_baseline_from_results(frame_results: list[dict], ball_type: str = "tennis") -> dict:

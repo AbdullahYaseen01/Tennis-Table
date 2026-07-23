@@ -1,7 +1,11 @@
 """Application constants, tunables, and color profiles."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+# Serverless deployment (Vercel sets VERCEL=1)
+IS_VERCEL = bool(os.environ.get("VERCEL"))
 
 # Paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
