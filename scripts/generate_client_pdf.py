@@ -1,4 +1,3 @@
-"""Generate a clean client PDF report from test JSON."""
 from __future__ import annotations
 
 import json
@@ -12,13 +11,11 @@ sys.path.insert(0, str(ROOT))
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-
 def _fmt_date(iso: str) -> str:
     try:
         return datetime.fromisoformat(iso).strftime("%d %B %Y")
     except ValueError:
         return iso[:10]
-
 
 def build_pdf(report: dict, output_path: Path) -> None:
     video = report.get("video", "Test video")
@@ -33,12 +30,12 @@ def build_pdf(report: dict, output_path: Path) -> None:
     det_rate = report.get("detection_rate_pct")
     completed = report.get("test_completed", False)
 
-    fig = plt.figure(figsize=(8.27, 11.69))  # A4
+    fig = plt.figure(figsize=(8.27, 11.69))  
     fig.patch.set_facecolor("white")
     ax = fig.add_axes([0, 0, 1, 1])
     ax.axis("off")
 
-    # Header bar
+    
     ax.add_patch(plt.Rectangle((0, 0.88), 1, 0.12, transform=ax.transAxes, color="#1a472a", zorder=0))
     ax.text(0.5, 0.94, "Tennis Ball Condition Test Report", transform=ax.transAxes,
             ha="center", va="center", fontsize=22, fontweight="bold", color="white")
@@ -63,7 +60,7 @@ def build_pdf(report: dict, output_path: Path) -> None:
                 ha="right", color="#111111")
         y -= line
 
-    # Test info
+    
     section("Test Information")
     row("Video file", video)
     row("Test date", test_date)
@@ -71,7 +68,7 @@ def build_pdf(report: dict, output_path: Path) -> None:
     row("Status", "Completed" if completed else "Incomplete", bold=True)
     y -= line * 0.3
 
-    # Key results — only reliable metrics
+    
     section("Results")
     if baseline is not None:
         row("Baseline diameter (at rest)", f"{baseline:.1f} mm", bold=True)
@@ -83,7 +80,7 @@ def build_pdf(report: dict, output_path: Path) -> None:
         row("Ball tracking success rate", f"{det_rate:.0f} %")
     y -= line * 0.3
 
-    # Brief interpretation box
+    
     section("Summary")
     summary_lines = [
         "The ball was analysed under load using computer vision.",
@@ -99,7 +96,7 @@ def build_pdf(report: dict, output_path: Path) -> None:
         ax.text(0.1, y, text, transform=ax.transAxes, fontsize=10.5, color="#444444", wrap=True)
         y -= line * 0.85
 
-    # Footer
+    
     ax.text(0.5, 0.04, "Tennis Ball & Pickleball Condition Testing System",
             transform=ax.transAxes, ha="center", fontsize=9, color="#888888")
 
@@ -107,7 +104,6 @@ def build_pdf(report: dict, output_path: Path) -> None:
     with PdfPages(str(output_path)) as pdf:
         pdf.savefig(fig, bbox_inches="tight", facecolor="white")
     plt.close(fig)
-
 
 def main() -> int:
     stem = "test-video"
@@ -127,7 +123,6 @@ def main() -> int:
     build_pdf(report, out)
     print(f"PDF saved: {out}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

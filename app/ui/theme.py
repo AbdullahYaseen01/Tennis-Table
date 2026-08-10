@@ -1,14 +1,12 @@
-"""Premium dark theme — shared colors and Qt stylesheets."""
 from __future__ import annotations
 
-# Palette
 BG_DEEP = "#0b0f14"
 BG_MAIN = "#111820"
 BG_CARD = "#1a2332"
 BG_CARD_HOVER = "#222d3f"
 BG_ELEVATED = "#252f42"
 
-ACCENT_LIME = "#c8f135"      # tennis ball
+ACCENT_LIME = "#c8f135"      
 ACCENT_TEAL = "#00d4aa"
 ACCENT_CORAL = "#ff6b4a"
 ACCENT_SKY = "#4dabf7"
@@ -22,7 +20,6 @@ TEXT_MUTED = "#64748b"
 BORDER = "rgba(255, 255, 255, 0.08)"
 BORDER_ACCENT = "rgba(200, 241, 53, 0.35)"
 
-# Chart series colors (hex for pyqtgraph)
 CHART_COMPRESSION = ACCENT_CORAL
 CHART_RECOVERY = ACCENT_TEAL
 CHART_ZONE_OK = ACCENT_TEAL
@@ -32,21 +29,21 @@ CHART_FATIGUE_2 = ACCENT_SKY
 CHART_FATIGUE_3 = ACCENT_LIME
 
 APP_STYLESHEET = f"""
-QMainWindow, QWidget {{
+QMainWindow, QWidget { 
     background-color: {BG_MAIN};
     color: {TEXT_PRIMARY};
     font-family: "Segoe UI", "SF Pro Display", sans-serif;
     font-size: 13px;
-}}
+} 
 
-QTabWidget::pane {{
+QTabWidget::pane { 
     border: 1px solid {BORDER};
     border-radius: 0;
     background: {BG_MAIN};
     top: -1px;
-}}
+} 
 
-QTabBar::tab {{
+QTabBar::tab { 
     background: {BG_DEEP};
     color: {TEXT_SECONDARY};
     padding: 12px 28px;
@@ -55,56 +52,56 @@ QTabBar::tab {{
     border-top-right-radius: 8px;
     font-weight: 600;
     font-size: 13px;
-}}
+} 
 
-QTabBar::tab:selected {{
+QTabBar::tab:selected { 
     background: {BG_CARD};
     color: {ACCENT_LIME};
     border-bottom: 2px solid {ACCENT_LIME};
-}}
+} 
 
-QTabBar::tab:hover:!selected {{
+QTabBar::tab:hover:!selected { 
     background: {BG_CARD_HOVER};
     color: {TEXT_PRIMARY};
-}}
+} 
 
-QScrollBar:vertical {{
+QScrollBar:vertical { 
     background: {BG_DEEP};
     width: 10px;
     border-radius: 5px;
-}}
-QScrollBar::handle:vertical {{
+} 
+QScrollBar::handle:vertical { 
     background: {BG_ELEVATED};
     border-radius: 5px;
     min-height: 30px;
-}}
-QScrollBar::handle:vertical:hover {{
+} 
+QScrollBar::handle:vertical:hover { 
     background: {TEXT_MUTED};
-}}
+} 
 
-QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox { 
     background: {BG_ELEVATED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER};
     border-radius: 8px;
     padding: 8px 12px;
     min-height: 20px;
-}}
-QComboBox:hover, QLineEdit:hover {{
+} 
+QComboBox:hover, QLineEdit:hover { 
     border-color: {BORDER_ACCENT};
-}}
-QComboBox::drop-down {{
+} 
+QComboBox::drop-down { 
     border: none;
     width: 24px;
-}}
-QComboBox QAbstractItemView {{
+} 
+QComboBox QAbstractItemView { 
     background: {BG_CARD};
     color: {TEXT_PRIMARY};
     selection-background-color: {BG_ELEVATED};
     border: 1px solid {BORDER};
-}}
+} 
 
-QPushButton {{
+QPushButton { 
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 {ACCENT_LIME}, stop:1 #9ae234);
     color: #0b0f14;
@@ -113,133 +110,133 @@ QPushButton {{
     padding: 10px 20px;
     font-weight: 700;
     font-size: 13px;
-}}
-QPushButton:hover {{
+} 
+QPushButton:hover { 
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 #d4f542, stop:1 {ACCENT_LIME});
-}}
-QPushButton:pressed {{
+} 
+QPushButton:pressed { 
     background: #9ae234;
-}}
+} 
 
-QPushButton[class="secondary"] {{
+QPushButton[class="secondary"] { 
     background: {BG_ELEVATED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER};
-}}
-QPushButton[class="secondary"]:hover {{
+} 
+QPushButton[class="secondary"]:hover { 
     border-color: {BORDER_ACCENT};
     background: {BG_CARD_HOVER};
-}}
+} 
 
-QSplitter::handle {{
+QSplitter::handle { 
     background: {BORDER};
     width: 2px;
-}}
+} 
 """
 
 DASHBOARD_STYLESHEET = f"""
-#dashboardRoot {{
+#dashboardRoot { 
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 {BG_DEEP}, stop:0.5 {BG_MAIN}, stop:1 #0d1520);
-}}
+} 
 
-#heroBanner {{
+#heroBanner { 
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 #1a2838, stop:0.4 #1e3348, stop:1 #162636);
     border: 1px solid {BORDER};
     border-radius: 16px;
     padding: 4px;
-}}
+} 
 
-#heroTitle {{
+#heroTitle { 
     font-size: 26px;
     font-weight: 800;
     color: {TEXT_PRIMARY};
     letter-spacing: -0.5px;
-}}
+} 
 
-#heroSubtitle {{
+#heroSubtitle { 
     font-size: 13px;
     color: {TEXT_SECONDARY};
     font-weight: 400;
-}}
+} 
 
-#filterBar {{
+#filterBar { 
     background: {BG_CARD};
     border: 1px solid {BORDER};
     border-radius: 12px;
     padding: 4px 8px;
-}}
+} 
 
-#filterBar QLabel {{
+#filterBar QLabel { 
     color: {TEXT_SECONDARY};
     font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-}}
+} 
 
-#statCard {{
+#statCard { 
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
         stop:0 {BG_ELEVATED}, stop:1 {BG_CARD});
     border: 1px solid {BORDER};
     border-radius: 14px;
     padding: 16px;
     min-width: 140px;
-}}
+} 
 
-#statCard[accent="lime"] {{
+#statCard[accent="lime"] { 
     border-left: 4px solid {ACCENT_LIME};
-}}
-#statCard[accent="teal"] {{
+} 
+#statCard[accent="teal"] { 
     border-left: 4px solid {ACCENT_TEAL};
-}}
-#statCard[accent="coral"] {{
+} 
+#statCard[accent="coral"] { 
     border-left: 4px solid {ACCENT_CORAL};
-}}
-#statCard[accent="sky"] {{
+} 
+#statCard[accent="sky"] { 
     border-left: 4px solid {ACCENT_SKY};
-}}
+} 
 
-#statCardTitle {{
+#statCardTitle { 
     color: {TEXT_MUTED};
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 1px;
-}}
+} 
 
-#statCardValue {{
+#statCardValue { 
     color: {TEXT_PRIMARY};
     font-size: 28px;
     font-weight: 800;
     letter-spacing: -1px;
-}}
+} 
 
-#statCardSub {{
+#statCardSub { 
     color: {TEXT_SECONDARY};
     font-size: 11px;
-}}
+} 
 
-#chartCard {{
+#chartCard { 
     background: {BG_CARD};
     border: 1px solid {BORDER};
     border-radius: 14px;
-}}
+} 
 
-#chartCardTitle {{
+#chartCardTitle { 
     color: {TEXT_PRIMARY};
     font-size: 14px;
     font-weight: 700;
     padding: 4px 0;
-}}
+} 
 
-#chartCardSubtitle {{
+#chartCardSubtitle { 
     color: {TEXT_MUTED};
     font-size: 11px;
-}}
+} 
 
-#runTable {{
+#runTable { 
     background: {BG_CARD};
     border: 1px solid {BORDER};
     border-radius: 14px;
@@ -247,9 +244,9 @@ DASHBOARD_STYLESHEET = f"""
     selection-background-color: rgba(200, 241, 53, 0.15);
     selection-color: {TEXT_PRIMARY};
     outline: none;
-}}
+} 
 
-#runTable QHeaderView::section {{
+#runTable QHeaderView::section { 
     background: {BG_ELEVATED};
     color: {TEXT_SECONDARY};
     font-weight: 700;
@@ -259,108 +256,107 @@ DASHBOARD_STYLESHEET = f"""
     padding: 12px 8px;
     border: none;
     border-bottom: 2px solid {ACCENT_LIME};
-}}
+} 
 
-#runTable::item {{
+#runTable::item { 
     padding: 10px 8px;
     border-bottom: 1px solid {BORDER};
-}}
+} 
 
-#runTable::item:selected {{
+#runTable::item:selected { 
     background: rgba(200, 241, 53, 0.12);
-}}
+} 
 
-#runTable::item:hover {{
+#runTable::item:hover { 
     background: rgba(255, 255, 255, 0.04);
-}}
+} 
 
-#runTable::item:alternate {{
+#runTable::item:alternate { 
     background: rgba(255, 255, 255, 0.02);
-}}
+} 
 
-#detailHeader {{
+#detailHeader { 
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 rgba(200, 241, 53, 0.12), stop:1 transparent);
     border: 1px solid {BORDER_ACCENT};
     border-radius: 12px;
     padding: 14px 18px;
-}}
+} 
 
-#detailHeaderTitle {{
+#detailHeaderTitle { 
     font-size: 16px;
     font-weight: 700;
     color: {ACCENT_LIME};
-}}
+} 
 
-#detailHeaderMeta {{
+#detailHeaderMeta { 
     color: {TEXT_SECONDARY};
     font-size: 12px;
-}}
+} 
 
-#sectionLabel {{
+#sectionLabel { 
     font-size: 15px;
     font-weight: 800;
     color: {TEXT_PRIMARY};
     letter-spacing: -0.3px;
-}}
+} 
 
-#sectionHint {{
+#sectionHint { 
     color: {TEXT_MUTED};
     font-size: 12px;
-}}
+} 
 
-#fatigueSection {{
+#fatigueSection { 
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 {BG_CARD}, stop:1 #1a2a3a);
     border: 1px solid {BORDER};
     border-radius: 14px;
     padding: 8px;
-}}
+} 
 """
 
 SIMPLE_DASHBOARD_STYLESHEET = f"""
-#dashTitle {{
+#dashTitle { 
     font-size: 18px;
     font-weight: 700;
     color: {TEXT_PRIMARY};
-}}
+} 
 
-#dashSummary {{
+#dashSummary { 
     background: {BG_CARD};
     border: 1px solid {BORDER};
     border-radius: 8px;
     padding: 12px 14px;
     color: {TEXT_SECONDARY};
     font-size: 13px;
-}}
+} 
 
-#simpleTable {{
+#simpleTable { 
     background: {BG_CARD};
     border: 1px solid {BORDER};
     border-radius: 8px;
     gridline-color: {BORDER};
     selection-background-color: rgba(200, 241, 53, 0.12);
-}}
+} 
 
-#simpleTable QHeaderView::section {{
+#simpleTable QHeaderView::section { 
     background: {BG_ELEVATED};
     color: {TEXT_SECONDARY};
     font-weight: 600;
     padding: 10px 6px;
     border: none;
     border-bottom: 1px solid {BORDER};
-}}
+} 
 
-#trendBox {{
+#trendBox { 
     background: {BG_CARD};
     border: 1px solid {BORDER};
     border-radius: 8px;
-}}
+} 
 """
 
-
 def style_plot(widget, *, title: str = "") -> None:
-    """Apply premium dark styling to a pyqtgraph PlotWidget."""
+    
     widget.setBackground(BG_ELEVATED)
     widget.getPlotItem().getViewBox().setBackgroundColor(BG_CARD)
     for axis_name in ("left", "bottom"):

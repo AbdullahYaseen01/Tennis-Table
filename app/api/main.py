@@ -1,4 +1,3 @@
-"""FastAPI server — upload video, process, download annotated result."""
 from __future__ import annotations
 
 import logging
@@ -39,15 +38,13 @@ app.add_middleware(
 _executor = ThreadPoolExecutor(max_workers=2)
 ALLOWED_EXT = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 
-
 @app.get("/", response_class=HTMLResponse)
 def home():
-    """Simple upload UI for client demos."""
+    
     index = STATIC_DIR / "index.html"
     if not index.exists():
         return HTMLResponse("<h1>UI missing</h1>", status_code=500)
     return HTMLResponse(index.read_text(encoding="utf-8"))
-
 
 @app.get("/api")
 def api_info():
@@ -57,10 +54,10 @@ def api_info():
             "1. POST /upload  — upload your .mp4 video (multipart form, field name: file)",
             "2. GET  /status/{job_id}  — poll until status is 'completed'",
             "3. GET  /download/{job_id}  — download annotated video",
+            "4. GET  /dashboard/{job_id}  — open interactive graphs dashboard",
         ],
         "docs": "/docs",
     }
-
 
 @app.post("/analyze-frame")
 async def analyze_frame(
@@ -69,7 +66,7 @@ async def analyze_frame(
     px_per_mm: float | None = Form(None),
     ball_type: str = Form("tennis"),
 ):
-    """Analyze one webcam frame for live overlay (JPEG/PNG)."""
+    
     data = await file.read()
     if len(data) < 100:
         raise HTTPException(400, "Frame too small")
@@ -77,13 +74,12 @@ async def analyze_frame(
         data, baseline_h_px=baseline_h, px_per_mm=px_per_mm, ball_type=ball_type
     )
 
-
 @app.post("/analyze-baseline")
 async def analyze_baseline(
     files: list[UploadFile] = File(...),
     ball_type: str = Form("tennis"),
 ):
-    """Analyze many still frames to lock an accurate round baseline."""
+    
     if not files:
         raise HTTPException(400, "Upload at least one frame")
     if len(files) > 65:
@@ -100,7 +96,6 @@ async def analyze_baseline(
     summary["frames_received"] = len(files)
     return summary
 
-
 @app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
@@ -109,7 +104,7 @@ async def upload_video(
     px_per_mm: float | None = Form(None),
     confidence_pct: float | None = Form(None),
 ):
-    """Upload a test video. Returns a job_id to poll for status."""
+    
     if not file.filename:
         raise HTTPException(400, "Missing filename")
 
@@ -160,9 +155,8 @@ async def upload_video(
         },
     )
 
-
 def _process_job_sync(job_id: str) -> dict:
-    """Process video inline — required on Vercel (no background threads)."""
+    
     job = job_store.get(job_id)
     if job is None:
         raise ValueError("Job not found")
@@ -195,8 +189,9 @@ def _process_job_sync(job_id: str) -> dict:
     job = job_store.get(job_id)
     payload = job.to_dict() if job else {"job_id": job_id, "status": "completed", "results": metrics}
     payload["download_url"] = f"/download/{job_id}"
+    if metrics.get("dashboard"):
+        payload["dashboard_url"] = f"/dashboard/{job_id}"
     return payload
-
 
 @app.get("/status/{job_id}")
 def get_status(job_id: str):
@@ -205,6 +200,22 @@ def get_status(job_id: str):
         raise HTTPException(404, "Job not found")
     return job.to_dict()
 
+@app.get("/dashboard/{job_id}")
+def get_dashboard(job_id: str):
+    job = job_store.get(job_id)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(409, f"Not ready — status: {job.status.value}")
+
+    dashboard = (job.results or {}).get("dashboard")
+    if not dashboard:
+        raise HTTPException(404, "Dashboard not available for this job")
+    path = Path(dashboard)
+    if not path.exists():
+        raise HTTPException(404, "Dashboard file missing on server")
+
+    return FileResponse(path=path, media_type="text/html; charset=utf-8")
 
 @app.get("/download/{job_id}")
 def download_video(job_id: str):
@@ -223,7 +234,6 @@ def download_video(job_id: str):
         media_type="video/mp4",
         filename=filename,
     )
-
 
 def _run_job(job_id: str) -> None:
     job = job_store.get(job_id)

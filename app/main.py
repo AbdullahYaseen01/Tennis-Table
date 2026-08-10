@@ -1,11 +1,9 @@
-"""PySide6 entry point — tab shell for the tennis ball tester."""
 from __future__ import annotations
 
 import logging
 import sys
 from pathlib import Path
 
-# Ensure project root is on path when running as script
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -26,7 +24,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -74,7 +71,6 @@ class MainWindow(QMainWindow):
             parts.append("Calibration required")
         self.setWindowTitle(" — ".join(parts))
 
-
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
@@ -82,7 +78,6 @@ def main() -> int:
     window = MainWindow()
     window.show()
     return app.exec()
-
 
 if __name__ == "__main__":
     sys.exit(main())

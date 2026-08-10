@@ -1,4 +1,3 @@
-"""Fast export of annotated client video with measurement overlays + results panel."""
 from __future__ import annotations
 
 import json
@@ -13,7 +12,6 @@ import numpy as np
 
 from app.config import COLOR_PROFILES, REFERENCE_DIAMETERS_MM, SAMPLES_DIR
 
-
 def resize_keep_aspect(frame: np.ndarray, max_side: int = 720) -> np.ndarray:
     h, w = frame.shape[:2]
     if max(h, w) <= max_side:
@@ -21,9 +19,8 @@ def resize_keep_aspect(frame: np.ndarray, max_side: int = 720) -> np.ndarray:
     scale = max_side / max(h, w)
     return cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-
 def detect_ball_fast(frame: np.ndarray, ball_type: str = "tennis") -> dict | None:
-    """Lightweight colour + ellipse detection for video export (fast, not lab-grade)."""
+    
     profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])
     lower = np.array(profile["hsv_lower"], dtype=np.uint8)
     upper = np.array(profile["hsv_upper"], dtype=np.uint8)
@@ -72,9 +69,8 @@ def detect_ball_fast(frame: np.ndarray, ball_type: str = "tennis") -> dict | Non
         "area": float(best_area),
     }
 
-
 def draw_panel(frame: np.ndarray, lines: list[str], x: int = 12, y: int = 12) -> None:
-    """Semi-transparent results panel for client demos."""
+    
     pad = 10
     line_h = 26
     width = max(len(s) for s in lines) * 11 + pad * 2
@@ -102,7 +98,6 @@ def draw_panel(frame: np.ndarray, lines: list[str], x: int = 12, y: int = 12) ->
             cv2.LINE_AA,
         )
 
-
 def export_annotated(
     video_path: Path,
     output_path: Path,
@@ -125,7 +120,7 @@ def export_annotated(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Prefer AVI/XVID on Windows — more reliable for sharing than mp4v
+    
     if output_path.suffix.lower() == ".mp4":
         avi_path = output_path.with_suffix(".avi")
     else:
@@ -142,10 +137,10 @@ def export_annotated(
         raise RuntimeError(f"VideoWriter failed for {avi_path}")
     output_path = avi_path
 
-    # Reset to start
+    
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    # Collect resting diameters for live scale estimate
+    
     rest_px: list[float] = []
     baseline_px: float | None = None
     ppm: float | None = None
@@ -188,7 +183,7 @@ def export_annotated(
                 2,
             )
 
-            # First ~2s at rest → establish scale / baseline
+            
             if t < 2.0 and minor > 20:
                 rest_px.append(minor)
                 if len(rest_px) >= 12 and ppm is None:
@@ -215,7 +210,7 @@ def export_annotated(
                 cv2.LINE_AA,
             )
 
-        # Results panel (client-facing)
+        
         bl = baseline_mm_report if baseline_mm_report is not None else (
             round(baseline_px / ppm, 1) if (baseline_px and ppm) else None
         )
@@ -224,10 +219,10 @@ def export_annotated(
             "TENNIS BALL CONDITION TEST",
             f"Video: {video_path.name}",
             f"Time: {t:5.2f}s   Frame: {frame_idx}",
-            f"Baseline: {bl if bl is not None else '—'} mm",
-            f"Max compression: {mc if mc is not None else '—'} %",
+            f"Baseline: {bl if bl is not None else 'â€”'} mm",
+            f"Max compression: {mc if mc is not None else 'â€”'} %",
             f"Live compression: {live_comp:.1f}%",
-            f"Rest error vs 67mm: {rest_err:+.1f}%" if rest_err is not None else "Rest error: —",
+            f"Rest error vs 67mm: {rest_err:+.1f}%" if rest_err is not None else "Rest error: â€”",
             f"Detection rate: {det_rate}%" if det_rate is not None else f"Detected frames: {detected}",
             "Status: COMPLETE" if report.get("test_completed") else "Status: PROCESSING",
         ]
@@ -244,9 +239,8 @@ def export_annotated(
     size_kb = output_path.stat().st_size / 1024
     print(f"Done: {frame_idx} frames -> {output_path} ({size_kb:.0f} KB)")
     if frame_idx < 5 or size_kb < 50:
-        raise RuntimeError("Output video looks empty — writer failed")
+        raise RuntimeError("Output video looks empty â€” writer failed")
     return output_path
-
 
 def main() -> int:
     video = SAMPLES_DIR / "Test video.mp4"
@@ -270,7 +264,6 @@ def main() -> int:
     print(f"Output: {out}")
     export_annotated(video, out, report=report)
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

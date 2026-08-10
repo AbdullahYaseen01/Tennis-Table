@@ -1,4 +1,3 @@
-"""Camera intrinsics, scale calibration, and accuracy validation."""
 from __future__ import annotations
 
 import logging
@@ -21,7 +20,6 @@ from app.core.models import ValidationResult
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class CalibrationData:
     camera_matrix: np.ndarray
@@ -31,9 +29,8 @@ class CalibrationData:
     map2: np.ndarray | None = None
     image_size: tuple[int, int] | None = None
 
-
 class Calibrator:
-    """Lens intrinsics + real-world scale at the ball plane."""
+    
 
     def __init__(self) -> None:
         self.camera_matrix: np.ndarray | None = None
@@ -169,7 +166,7 @@ class Calibrator:
         flags = cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
         found, corners = cv2.findChessboardCorners(gray, pattern_size, flags)
         if not found:
-            # OpenCV 4.x fast SB detector when available
+            
             sb = getattr(cv2, "findChessboardCornersSB", None)
             if sb is not None:
                 found, corners = sb(gray, pattern_size, flags)
@@ -187,12 +184,12 @@ class Calibrator:
         return out
 
     def compute_scale_from_checkerboard(self, frame: np.ndarray) -> float | None:
-        """Compute pixels-per-mm from checkerboard at the ball plane."""
+        
         found, corners = self.detect_checkerboard(frame)
         if not found or corners is None:
             return None
 
-        # Average adjacent corner distances in pixels
+        
         corners_2d = corners.reshape(-1, 2)
         dists: list[float] = []
         for row in range(CHECKERBOARD_ROWS):
@@ -235,7 +232,7 @@ class Calibrator:
         diameter_px: float,
         known_diameter_mm: float,
     ) -> bool:
-        """Set px/mm from a sub-pixel ball measurement and known spec diameter."""
+        
         if diameter_px <= 0 or known_diameter_mm <= 0:
             return False
         ppm = diameter_px / known_diameter_mm
@@ -272,7 +269,7 @@ class Calibrator:
     def validate_known_diameter(
         self, frame: np.ndarray, known_diameter_mm: float, detector=None
     ) -> ValidationResult | None:
-        """Validate using the same sub-pixel detector pipeline when available."""
+        
         undist = self.undistort(frame)
         if detector is not None:
             import time
@@ -291,7 +288,7 @@ class Calibrator:
     def _measure_circle_diameter_px_legacy(
         self, frame: np.ndarray, center: tuple[float, float] | None = None
     ) -> float | None:
-        """Measure diameter of a circular object using edge detection."""
+        
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (9, 9), 2)
         if center is None:
@@ -309,7 +306,7 @@ class Calibrator:
                 return None
             c = circles[0][0]
             return float(c[2] * 2)
-        # Radial edge sampling at given center
+        
         cx, cy = center
         h, w = gray.shape
         radii: list[float] = []

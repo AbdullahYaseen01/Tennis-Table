@@ -1,4 +1,3 @@
-"""8-zone surface condition analysis."""
 from __future__ import annotations
 
 import logging
@@ -18,14 +17,12 @@ from app.vision.calibration import Calibrator
 
 logger = logging.getLogger(__name__)
 
-
 class SurfaceMode(str, Enum):
     SINGLE_VIEW = "single_view"
     ROTATE_CAPTURE = "rotate_capture"
 
-
 class SurfaceAnalyzer:
-    """Per-zone fuzz, shape irregularity, and texture metrics."""
+    
 
     def __init__(self, calibrator: Calibrator) -> None:
         self.calibrator = calibrator
@@ -154,7 +151,7 @@ class SurfaceAnalyzer:
             -1,
         )
 
-        # Annular band for edge fuzz
+        
         inner_r = radius * SURFACE_ANNULUS_INNER_RATIO
         outer_r = radius * SURFACE_ANNULUS_OUTER_RATIO
         annulus = np.zeros((h, w), dtype=np.uint8)
@@ -180,12 +177,12 @@ class SurfaceAnalyzer:
         )
         edge_mask = cv2.bitwise_and(annulus, mask)
 
-        # Fuzz: Laplacian variance in annulus
+        
         lap = cv2.Laplacian(gray, cv2.CV_64F)
         edge_pixels = lap[edge_mask > 0]
         fuzz_score = float(np.var(edge_pixels)) if len(edge_pixels) > 0 else 0.0
 
-        # Gradient magnitude stats
+        
         gx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         gy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
         grad_mag = np.sqrt(gx**2 + gy**2)
@@ -193,7 +190,7 @@ class SurfaceAnalyzer:
         if len(grad_pixels) > 0:
             fuzz_score += float(np.mean(grad_pixels))
 
-        # Shape irregularity: radial residual std in sector
+        
         shape_score = 0.0
         if measurement.refined_edge_points is not None and len(measurement.refined_edge_points) > 0:
             pts = measurement.refined_edge_points.reshape(-1, 2)
@@ -211,7 +208,7 @@ class SurfaceAnalyzer:
                     residuals.append(abs(dist - radius))
             shape_score = float(np.std(residuals)) if len(residuals) > 2 else 0.0
 
-        # Texture: intensity std inside sector (excluding edge annulus)
+        
         inner_mask = np.zeros((h, w), dtype=np.uint8)
         cv2.ellipse(
             inner_mask,
@@ -259,7 +256,7 @@ class SurfaceAnalyzer:
 
         zones: list[ZoneResult] = []
         for i in range(len(metrics)):
-            # Flag if combined or any single metric is an outlier
+            
             flagged = (
                 abs(combined_z[i]) > ZONE_ZSCORE_THRESHOLD
                 or abs(fuzz_z[i]) > ZONE_ZSCORE_THRESHOLD
@@ -285,7 +282,7 @@ class SurfaceAnalyzer:
             return False
 
         contour = measurement.contour.reshape(-1, 2).astype(np.float32)
-        # High curvature breaks indicate cracks
+        
         breaks = 0
         for i in range(len(contour)):
             p0 = contour[(i - 1) % len(contour)]
@@ -306,7 +303,7 @@ class SurfaceAnalyzer:
     def artificially_wear_zone(
         self, frame: np.ndarray, measurement: BallMeasurement, zone_index: int
     ) -> np.ndarray:
-        """Dev helper: simulate localized wear/dent in one sector for testing."""
+        
         out = frame.copy()
         cx, cy = float(measurement.center_px[0]), float(measurement.center_px[1])
         radius = measurement.major_px / 2
@@ -315,18 +312,18 @@ class SurfaceAnalyzer:
         half_width = sector_size * 0.35
         start, end = mid_angle - half_width, mid_angle + half_width
 
-        # Localized flat spot on silhouette (shape irregularity)
+        
         pts = []
         for deg in np.linspace(start, end, 30):
             rad = np.deg2rad(deg)
-            r = radius * 0.82  # dent inward ~18%
+            r = radius * 0.82  
             px = int(cx + r * np.cos(rad))
             py = int(cy + r * np.sin(rad))
             pts.append([px, py])
         if len(pts) >= 3:
             cv2.fillPoly(out, [np.array(pts, dtype=np.int32)], (18, 18, 18))
 
-        # Texture loss in narrow inner sector only
+        
         inner = np.zeros(out.shape[:2], dtype=np.uint8)
         cv2.ellipse(
             inner,
@@ -340,7 +337,7 @@ class SurfaceAnalyzer:
         )
         out[inner > 0] = (out[inner > 0].astype(np.float32) * 0.35).astype(np.uint8)
 
-        # Fuzz loss: narrow annulus band in target sector only
+        
         band = np.zeros(out.shape[:2], dtype=np.uint8)
         cv2.ellipse(
             band, (int(cx), int(cy)), (int(radius), int(radius)),

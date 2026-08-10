@@ -1,4 +1,3 @@
-"""Full test run on a client video — produces a shareable report."""
 from __future__ import annotations
 
 import json
@@ -12,7 +11,6 @@ sys.path.insert(0, str(ROOT))
 import cv2
 import app.config as _cfg
 
-# Fast batch mode for client reports (classical CV, fewer rays, no YOLO)
 _cfg.YOLO_ENABLED = False
 _cfg.SUBPIXEL_RAYS = 72
 _cfg.SUBPIXEL_RAYS_REST = 120
@@ -25,14 +23,12 @@ from app.core.pipeline import TestPipeline
 from app.vision.calibration import Calibrator
 from app.vision.camera import FrameSource
 
-
 def _resize_frame(frame: np.ndarray, max_side: int = 960) -> np.ndarray:
     h, w = frame.shape[:2]
     if max(h, w) <= max_side:
         return frame
     scale = max_side / max(h, w)
     return cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-
 
 def run_full_test(video_path: Path, ball_type: str = "tennis") -> dict:
     known_mm = REFERENCE_DIAMETERS_MM.get(ball_type, 67.0)
@@ -84,7 +80,7 @@ def run_full_test(video_path: Path, ball_type: str = "tennis") -> dict:
             break
 
         if total_frames % 30 == 0:
-            print(f"  … frame {total_frames}/{281}  state={pipe.state.value}", flush=True)
+            print(f"  â€¦ frame {total_frames}/{281}  state={pipe.state.value}", flush=True)
 
     src.release()
 
@@ -116,7 +112,6 @@ def run_full_test(video_path: Path, ball_type: str = "tennis") -> dict:
         "test_completed": pipe.state == TestState.DONE,
         "pipeline_state": pipe.state.value,
     }
-
 
 def save_report(report: dict, stem: str) -> tuple[Path, Path]:
     out_dir = ROOT / "data" / "reports"
@@ -173,7 +168,6 @@ def save_report(report: dict, stem: str) -> tuple[Path, Path]:
     txt_path.write_text(txt, encoding="utf-8")
     return txt_path, json_path
 
-
 def main() -> int:
     video = SAMPLES_DIR / "Test video.mp4"
     if len(sys.argv) > 1:
@@ -191,7 +185,6 @@ def main() -> int:
     print("\n" + open(txt_path, encoding="utf-8").read())
     print(f"\nReports saved to:\n  {txt_path}\n  {json_path}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

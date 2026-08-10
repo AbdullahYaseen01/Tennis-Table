@@ -1,4 +1,3 @@
-"""Temporal fusion for stable diameter readings at rest."""
 from __future__ import annotations
 
 from collections import deque
@@ -7,9 +6,8 @@ import numpy as np
 
 from app.config import TEMPORAL_FUSION_WINDOW
 
-
 class MeasurementFusion:
-    """Median fusion over recent frames — reduces jitter without lagging compression."""
+    
 
     def __init__(self, window: int = TEMPORAL_FUSION_WINDOW) -> None:
         self._window = window

@@ -1,4 +1,3 @@
-"""Ball detection via colour segmentation and sub-pixel ellipse fitting."""
 from __future__ import annotations
 
 import logging
@@ -29,9 +28,8 @@ from app.vision.yolo_roi import YoloRoiSeeder
 
 logger = logging.getLogger(__name__)
 
-
 class BallDetector:
-    """High-accuracy classical CV detector with optional YOLO ROI seeding."""
+    
 
     def __init__(self, calibrator: Calibrator) -> None:
         self.calibrator = calibrator
@@ -100,13 +98,23 @@ class BallDetector:
         hsv = cv2.cvtColor(sub, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.hsv_lower, self.hsv_upper)
 
-        # Optional LAB refinement when it agrees with HSV (avoids over-filtering)
+        
         if self.ball_type == "tennis":
             lab = cv2.cvtColor(sub, cv2.COLOR_BGR2LAB)
             _, a_channel, _ = cv2.split(lab)
             mask_lab = cv2.inRange(a_channel, 118, 255)
             combined = cv2.bitwise_and(mask, mask_lab)
             if cv2.countNonZero(combined) > cv2.countNonZero(mask) * 0.25:
+                mask = combined
+        elif self.ball_type.startswith("pickleball"):
+            lab = cv2.cvtColor(sub, cv2.COLOR_BGR2LAB)
+            _, a_channel, b_channel = cv2.split(lab)
+            mask_lab = cv2.bitwise_and(
+                cv2.inRange(a_channel, 95, 255),
+                cv2.inRange(b_channel, 120, 255),
+            )
+            combined = cv2.bitwise_and(mask, mask_lab)
+            if cv2.countNonZero(combined) > cv2.countNonZero(mask) * 0.20:
                 mask = combined
 
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel)
@@ -173,7 +181,7 @@ class BallDetector:
 
         contour = self._select_contour(list(contours), frame_area, hint)
         if contour is None:
-            # Retry full frame without ROI
+            
             if roi is not None:
                 mask = self._segment(undist, None)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -208,7 +216,7 @@ class BallDetector:
             self.reset_roi()
             return None
 
-        # Temporal fusion at rest — raw axes during compression (high eccentricity)
+        
         if ecc <= REST_ECCENTRICITY_MAX:
             major_px, minor_px = self._fusion.apply_px(major_px, minor_px)
 
@@ -249,7 +257,7 @@ class BallDetector:
     def measure_median_diameter_px(
         self, frames: list[np.ndarray], axis: str = "minor"
     ) -> float | None:
-        """Robust median pixel diameter using full two-pass edge pipeline."""
+        
         values: list[float] = []
         for frame in frames:
             undist = self.calibrator.undistort(frame)

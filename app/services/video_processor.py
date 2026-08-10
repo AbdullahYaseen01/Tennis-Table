@@ -1,4 +1,3 @@
-"""Process uploaded videos into annotated client-ready MP4s."""
 from __future__ import annotations
 
 import logging
@@ -21,9 +20,8 @@ _DATA_ROOT = Path("/tmp") if IS_VERCEL else ROOT
 UPLOADS_DIR = _DATA_ROOT / "data" / "uploads"
 OUTPUTS_DIR = _DATA_ROOT / "data" / "outputs"
 
-
 def _to_mp4(avi_path: Path, mp4_path: Path) -> Path:
-    """Convert AVI to H.264 MP4 using ffmpeg if available."""
+    
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
         cmd = [
@@ -35,12 +33,11 @@ def _to_mp4(avi_path: Path, mp4_path: Path) -> Path:
         avi_path.unlink(missing_ok=True)
         return mp4_path
 
-    logger.warning("ffmpeg not found — output will be AVI")
+    logger.warning("ffmpeg not found â€” output will be AVI")
     dest = mp4_path.with_suffix(".avi")
     if avi_path != dest:
         shutil.move(str(avi_path), str(dest))
     return dest
-
 
 def process_video(
     input_path: Path,
@@ -51,17 +48,17 @@ def process_video(
     fixed_baseline_px: float | None = None,
     fixed_px_per_mm: float | None = None,
 ) -> tuple[Path, dict]:
-    """Run bounce/compression tracker and return (output_mp4_path, results_dict)."""
+    
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if on_progress:
-        on_progress("Analyzing video…")
+        on_progress("Analyzing videoâ€¦")
 
     out_path = OUTPUTS_DIR / f"{job_id}-tracked.mp4"
 
     if on_progress:
-        on_progress("Tracking ball and measuring compression…")
+        on_progress("Tracking ball and measuring compressionâ€¦")
 
     metrics = export_bounce(
         input_path,
@@ -74,9 +71,9 @@ def process_video(
     )
 
     if on_progress:
-        on_progress("Finalizing video…")
+        on_progress("Finalizing videoâ€¦")
 
-    # OpenCV mp4v usually works on Vercel; convert if we got AVI fallback
+    
     if out_path.suffix.lower() == ".avi" or not out_path.exists():
         avi = out_path.with_suffix(".avi")
         if avi.exists():

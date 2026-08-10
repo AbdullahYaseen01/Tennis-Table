@@ -1,4 +1,3 @@
-"""Compression measurement against ball baseline."""
 from __future__ import annotations
 
 from collections import deque
@@ -8,9 +7,8 @@ import numpy as np
 from app.config import BASELINE_FRAME_COUNT, BASELINE_OUTLIER_SIGMA, COMPRESSION_MEDIAN_WINDOW, LOAD_AXIS
 from app.core.models import BallMeasurement, CompressionSample
 
-
 class CompressionTracker:
-    """Track relative compression % against a captured baseline."""
+    
 
     def __init__(self, load_axis: str = LOAD_AXIS) -> None:
         self.load_axis = load_axis
@@ -37,7 +35,7 @@ class CompressionTracker:
         self._max_compression_pct = 0.0
 
     def add_baseline_sample(self, measurement: BallMeasurement) -> bool:
-        """Collect baseline frames; returns True when baseline is locked."""
+        
         self._baseline_buffer.append((measurement.major_mm, measurement.minor_mm))
         self._baseline_px_buffer.append((measurement.major_px, measurement.minor_px))
         if len(self._baseline_buffer) < BASELINE_FRAME_COUNT:
@@ -62,7 +60,7 @@ class CompressionTracker:
         )
 
     def relock_baseline_mm_from_px(self, calibrator) -> None:
-        """Recompute baseline mm from stored px buffer after scale correction."""
+        
         if not self._baseline_px_buffer:
             return
 

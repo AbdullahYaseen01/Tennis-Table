@@ -1,4 +1,3 @@
-"""Pluggable frame source: webcam, network stream, or video file."""
 from __future__ import annotations
 
 import logging
@@ -14,9 +13,8 @@ logger = logging.getLogger(__name__)
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".webm"}
 
-
 def _parse_source(source: str | int) -> tuple[str, Any]:
-    """Return (source_type, capture_arg)."""
+    
     if isinstance(source, int) or (isinstance(source, str) and source.isdigit()):
         return "webcam", int(source)
     if isinstance(source, str):
@@ -29,9 +27,8 @@ def _parse_source(source: str | int) -> tuple[str, Any]:
             return "file", str(path)
     raise ValueError(f"Unsupported or missing video source: {source!r}")
 
-
 class FrameSource:
-    """Abstract video input — webcam, RTSP/HTTP, or looping file."""
+    
 
     def __init__(self, source: str | int, *, loop_file: bool = True) -> None:
         self._source_raw = source
@@ -122,24 +119,24 @@ class FrameSource:
         assert self._cap is not None
         if self._source_type == "file":
             return
-        # Auto exposure off (DSHOW: 0.25 manual, 0.75 auto)
+        
         self._cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
         self._cap.set(cv2.CAP_PROP_AUTO_WB, 0)
-        # Some backends expose temperature instead
+        
         try:
             self._cap.set(cv2.CAP_PROP_AUTO_WB, 0)
         except cv2.error:
             pass
 
     def set_exposure(self, value: float) -> None:
-        """Set manual exposure (backend-specific; negative = shorter on many webcams)."""
+        
         self._manual_exposure = value
         if self._cap is not None:
             self._cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
             self._cap.set(cv2.CAP_PROP_EXPOSURE, value)
 
     def set_white_balance(self, temperature: float) -> None:
-        """Set manual white balance temperature where supported."""
+        
         self._manual_wb = temperature
         if self._cap is not None:
             self._cap.set(cv2.CAP_PROP_AUTO_WB, 0)
@@ -172,11 +169,7 @@ class FrameSource:
                     logger.warning("Reconnect attempt failed: %s", exc)
 
     def read(self) -> tuple[bool, np.ndarray | None, float]:
-        """Return (ok, frame, timestamp_seconds).
-
-        File sources use media timeline (frame_index / fps).
-        Live sources use elapsed monotonic wall time.
-        """
+        
         if self._source_type == "network":
             ts = time.perf_counter()
             with self._lock:

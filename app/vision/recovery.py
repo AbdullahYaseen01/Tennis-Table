@@ -1,4 +1,3 @@
-"""Recovery curve fitting after compression release."""
 from __future__ import annotations
 
 import logging
@@ -10,13 +9,11 @@ from app.core.models import RecoveryResult
 
 logger = logging.getLogger(__name__)
 
-
 def _exp_recovery(t: np.ndarray, d_final: float, amplitude: float, tau: float) -> np.ndarray:
     return d_final - amplitude * np.exp(-t / np.maximum(tau, 1e-6))
 
-
 class RecoveryAnalyzer:
-    """Fit exponential recovery model to post-release diameter samples."""
+    
 
     def __init__(self) -> None:
         self._points: list[tuple[float, float]] = []
@@ -56,7 +53,7 @@ class RecoveryAnalyzer:
         t_arr = np.array([p[0] for p in self._points])
         d_arr = np.array([p[1] for p in self._points])
 
-        # Light smoothing — preserves timing, removes single-frame spikes
+        
         if len(d_arr) >= 5:
             kernel = np.array([0.1, 0.2, 0.4, 0.2, 0.1])
             d_smooth = np.convolve(d_arr, kernel, mode="same")
@@ -82,7 +79,7 @@ class RecoveryAnalyzer:
                 maxfev=8000,
             )
             d_final, amplitude, tau = float(popt[0]), float(popt[1]), float(popt[2])
-            # Fit confidence from parameter uncertainty
+            
             if pcov is not None and np.all(np.isfinite(pcov)):
                 perr = np.sqrt(np.maximum(np.diag(pcov), 0))
                 rel_err = float(np.mean(perr / (np.abs(popt) + 1e-6)))
@@ -91,12 +88,12 @@ class RecoveryAnalyzer:
             d_fine = _exp_recovery(t_fine, d_final, amplitude, tau)
             fitted_curve = (t_fine, d_fine)
 
-            # t95: time to reach 95% of recovery
+            
             d_start = float(d_arr[0])
             target = d_start + 0.95 * (d_final - d_start)
             t95 = self._threshold_crossing(t_arr, d_arr, target)
             if t95 is None:
-                # Analytical from fit
+                
                 if abs(d_final - d_start) > 1e-6 and amplitude > 1e-6:
                     frac = (d_final - target) / amplitude
                     if 0 < frac < 1:
@@ -136,7 +133,7 @@ class RecoveryAnalyzer:
     ) -> float | None:
         for i in range(1, len(d_arr)):
             if d_arr[i - 1] < target <= d_arr[i] or d_arr[i - 1] > target >= d_arr[i]:
-                # Linear interpolate
+                
                 if abs(d_arr[i] - d_arr[i - 1]) < 1e-9:
                     return float(t_arr[i])
                 frac = (target - d_arr[i - 1]) / (d_arr[i] - d_arr[i - 1])

@@ -1,8 +1,3 @@
-"""High-accuracy tennis ball tracker + annotated video export.
-
-Tuned for bright ball on grass footage. Mask-seeded ROI + Hough circle
-refinement, temporal smoothing, trajectory trail, and clean overlays.
-"""
 from __future__ import annotations
 
 import sys
@@ -13,15 +8,14 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-KNOWN_DIAMETER_MM = 67.0  # ITF tennis ball spec
+KNOWN_DIAMETER_MM = 67.0  
 
 HSV_LOWER = np.array([26, 90, 120])
 HSV_UPPER = np.array([45, 255, 255])
 KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
 
-
 def detect_ball(frame: np.ndarray) -> tuple[float, float, float] | None:
-    """Return (cx, cy, radius) via colour-seeded ROI + Hough refinement."""
+    
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, HSV_LOWER, HSV_UPPER)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, KERNEL)
@@ -61,9 +55,8 @@ def detect_ball(frame: np.ndarray) -> tuple[float, float, float] | None:
         return (x0 + float(cx), y0 + float(cy), float(r))
     return (sx, sy, sr)
 
-
 class Smoother:
-    """Median + EMA smoothing for stable center and radius."""
+    
 
     def __init__(self, window: int = 5, alpha: float = 0.5) -> None:
         self.cx: deque[float] = deque(maxlen=window)
@@ -87,7 +80,6 @@ class Smoother:
             self._ema = (a * mx + (1 - a) * ex, a * my + (1 - a) * ey, a * mr + (1 - a) * er)
         return self._ema
 
-
 def draw_panel(frame: np.ndarray, lines: list[tuple[str, tuple[int, int, int]]]) -> None:
     pad, line_h = 12, 30
     width = 330
@@ -99,7 +91,6 @@ def draw_panel(frame: np.ndarray, lines: list[tuple[str, tuple[int, int, int]]])
     for i, (text, color) in enumerate(lines):
         cv2.putText(frame, text, (10 + pad, 10 + pad + (i + 1) * line_h - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
-
 
 def export(video_path: Path, out_avi: Path) -> tuple[Path, int, float]:
     cap = cv2.VideoCapture(str(video_path))
@@ -115,7 +106,7 @@ def export(video_path: Path, out_avi: Path) -> tuple[Path, int, float]:
     if not writer.isOpened():
         raise RuntimeError("VideoWriter failed")
 
-    # Robust scale: use median radius across a first pass for stable px/mm
+    
     radii_pass: list[float] = []
     while True:
         ok, frame = cap.read()
@@ -146,7 +137,7 @@ def export(video_path: Path, out_avi: Path) -> tuple[Path, int, float]:
             dia_mm = (2 * r) / px_per_mm
             trail.append((int(cx), int(cy)))
 
-            # Trajectory trail
+            
             for j in range(1, len(trail)):
                 alpha = j / len(trail)
                 cv2.line(frame, trail[j - 1], trail[j],
@@ -182,7 +173,6 @@ def export(video_path: Path, out_avi: Path) -> tuple[Path, int, float]:
     print(f"Detection rate: {rate:.1f}%  |  ref diameter {ref_radius*2:.0f}px = {KNOWN_DIAMETER_MM}mm")
     return out_avi, frame_idx, rate
 
-
 def main() -> int:
     video = ROOT / "data" / "samples" / "Latest Test Video.mp4"
     if len(sys.argv) > 1:
@@ -196,7 +186,6 @@ def main() -> int:
     print(f"Input:  {video}\nOutput: {out_avi}\n")
     export(video, out_avi)
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

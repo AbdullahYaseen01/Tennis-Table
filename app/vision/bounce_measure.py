@@ -1,8 +1,3 @@
-"""High-accuracy ball detection and compression measurement for web + export.
-
-Includes low-quality video pipeline: upscale, denoise, multi-strategy detection,
-sub-pixel edge refinement, and temporal smoothing.
-"""
 from __future__ import annotations
 
 from collections import deque
@@ -32,16 +27,13 @@ LOW_QUALITY_MAX_WIDTH = 520
 LOW_QUALITY_MAX_PIXELS = 350_000
 ENHANCE_TARGET_WIDTH = 640
 
-
 def _roundness_min(ball_type: str) -> float:
     return REST_ROUNDNESS_GOLF if ball_type in ("golf", "white") else REST_ROUNDNESS_MIN
-
 
 def _aspect_bounds(ball_type: str) -> tuple[float, float]:
     if ball_type in ("golf", "white"):
         return REST_ASPECT_GOLF_MIN, REST_ASPECT_GOLF_MAX
     return REST_ASPECT_MIN, REST_ASPECT_MAX
-
 
 COLOR_PROFILES: dict[str, dict] = {
     "tennis": {
@@ -69,7 +61,6 @@ KERNEL_LG = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
 _clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
 _clahe_strong = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
 
-
 def assess_frame_quality(width: int, height: int) -> dict:
     pixels = width * height
     low = width < LOW_QUALITY_MAX_WIDTH or pixels < LOW_QUALITY_MAX_PIXELS
@@ -83,7 +74,6 @@ def assess_frame_quality(width: int, height: int) -> dict:
         "height": height,
     }
 
-
 def _robust_median(values: list[float] | np.ndarray) -> float:
     arr = np.asarray(values, dtype=np.float64)
     if len(arr) == 0:
@@ -93,20 +83,17 @@ def _robust_median(values: list[float] | np.ndarray) -> float:
     inliers = arr[np.abs(arr - med) <= BASELINE_OUTLIER_SIGMA * 1.4826 * mad]
     return float(np.median(inliers)) if len(inliers) >= 3 else med
 
-
 def _min_ball_px(frame_w: int, low_quality: bool = False) -> float:
     base = max(18.0, min(150.0, frame_w * 0.10))
     return base * 0.65 if low_quality else base
-
 
 def _min_baseline_frames(frame_w: int) -> int:
     if frame_w < LOW_QUALITY_MAX_WIDTH:
         return MIN_BASELINE_LOW_QUALITY
     return MIN_BASELINE_GOOD_FRAMES
 
-
 def enhance_frame(frame: np.ndarray, quality: dict | None = None) -> tuple[np.ndarray, float]:
-    """Upscale, denoise, and boost contrast for low-quality sources."""
+    
     h, w = frame.shape[:2]
     q = quality or assess_frame_quality(w, h)
     scale = q["enhance_scale"] if q["low_quality"] else 1.0
@@ -129,13 +116,11 @@ def enhance_frame(frame: np.ndarray, quality: dict | None = None) -> tuple[np.nd
 
     return out, scale
 
-
 def _preprocess(frame: np.ndarray) -> np.ndarray:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
     v = _clahe.apply(v)
     return cv2.cvtColor(cv2.merge([h, s, v]), cv2.COLOR_HSV2BGR)
-
 
 def _circularity(contour: np.ndarray) -> float:
     a = cv2.contourArea(contour)
@@ -143,7 +128,6 @@ def _circularity(contour: np.ndarray) -> float:
     if p <= 0:
         return 0.0
     return float(4.0 * np.pi * a / (p * p))
-
 
 def _build_masks(proc: np.ndarray, profile: dict, ball_type: str) -> list[np.ndarray]:
     hsv = cv2.cvtColor(proc, cv2.COLOR_BGR2HSV)
@@ -157,7 +141,7 @@ def _build_masks(proc: np.ndarray, profile: dict, ball_type: str) -> list[np.nda
         _, a_ch, _ = cv2.split(lab)
         masks.append(cv2.bitwise_and(m1, cv2.inRange(a_ch, 110, 255)))
 
-    # Relaxed saturation for faded / compressed video
+    
     loose = profile["hsv_lower"].copy()
     loose[1] = max(0, int(loose[1]) - 30)
     loose[2] = max(0, int(loose[2]) - 25)
@@ -171,7 +155,6 @@ def _build_masks(proc: np.ndarray, profile: dict, ball_type: str) -> list[np.nda
         masks.append(cv2.bitwise_and(bright, adapt))
 
     return masks
-
 
 def _best_contour_from_mask(mask: np.ndarray, min_area: float, frame_w: int, frame_h: int | None = None):
     fh = frame_h or max(mask.shape[0], 1)
@@ -207,7 +190,6 @@ def _best_contour_from_mask(mask: np.ndarray, min_area: float, frame_w: int, fra
     x, y, w, h = cv2.boundingRect(best)
     return float(x + w / 2), float(y + h / 2), float(w), float(h), best
 
-
 def detect_on_frame(
     proc: np.ndarray,
     *,
@@ -215,7 +197,7 @@ def detect_on_frame(
     min_area: float = 1000.0,
     frame_w: int | None = None,
 ) -> tuple[float, float, float, float, np.ndarray] | None:
-    """Run mask pipeline on an already-enhanced frame."""
+    
     fw = frame_w or proc.shape[1]
     low_q = fw < LOW_QUALITY_MAX_WIDTH or (proc.shape[0] * fw) < LOW_QUALITY_MAX_PIXELS
     profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])
@@ -241,7 +223,6 @@ def detect_on_frame(
                 return hit
     return best_hit
 
-
 def detect(
     frame: np.ndarray,
     *,
@@ -254,14 +235,12 @@ def detect(
     proc, _ = enhance_frame(frame, q)
     return detect_on_frame(proc, ball_type=ball_type, min_area=min_area, frame_w=proc.shape[1])
 
-
 def _scale_detection(
     hit: tuple[float, float, float, float, np.ndarray], inv_scale: float,
 ) -> tuple[float, float, float, float, np.ndarray]:
     cx, cy, bw, bh, contour = hit
     contour = (contour.astype(np.float64) * inv_scale).astype(np.int32)
     return cx * inv_scale, cy * inv_scale, bw * inv_scale, bh * inv_scale, contour
-
 
 def measure_ellipse(contour: np.ndarray) -> dict | None:
     if contour is None or len(contour) < 5:
@@ -285,7 +264,6 @@ def measure_ellipse(contour: np.ndarray) -> dict | None:
         },
     }
 
-
 def measure_refined(
     frame: np.ndarray,
     contour: np.ndarray,
@@ -297,7 +275,7 @@ def measure_refined(
     low_quality: bool,
     use_subpixel: bool = False,
 ) -> dict | None:
-    """Optional sub-pixel edge refine (off by default for speed on long videos)."""
+    
     ell = measure_ellipse(contour)
     if ell is None:
         return None
@@ -332,7 +310,6 @@ def measure_refined(
     except Exception:
         return ell
 
-
 def is_valid_measurement(
     meas: dict,
     *,
@@ -354,7 +331,7 @@ def is_valid_measurement(
 
     if height_px < min_ball:
         return False
-    # Allow near-edge detections when the ball itself is clearly round (in-air near top)
+    
     if touches_edge and not low_quality and roundness < 0.88:
         return False
     if touches_edge and low_quality and (bx <= 0 or (bx + bbw) >= frame_w - 1):
@@ -370,7 +347,6 @@ def is_valid_measurement(
         if height_px < 0.30 * baseline_minor_px:
             return False
     return roundness >= (0.42 if low_quality else 0.50)
-
 
 def analyze_ball_in_frame(
     frame: np.ndarray,
@@ -411,7 +387,7 @@ def analyze_ball_in_frame(
         frame_w=search.shape[1],
     )
     if d is None and roi_hint is not None:
-        # Fall back to full frame if ROI miss
+        
         d = detect_on_frame(
             enhanced, ball_type=ball_type,
             min_area=max(180.0, min_ball * min_ball * 0.30),
@@ -439,7 +415,7 @@ def analyze_ball_in_frame(
         ell["ellipse"] = {**e, "cx": e["cx"] * inv, "cy": e["cy"] * inv, "a": e["a"] * inv, "b": e["b"] * inv}
         econtour = (econtour.astype(np.float64) * inv).astype(np.int32)
 
-    # Shadow merge recovery: if blob is oversized vs baseline, re-detect in a tight ROI
+    
     load_px = _load_axis_extent_px(ell["ellipse"], vertical=True)
     if (
         baseline_minor_px
@@ -471,7 +447,7 @@ def analyze_ball_in_frame(
         meas, frame_w=w_img, baseline_minor_px=baseline_minor_px,
         ball_type=ball_type, low_quality=low_q,
     ):
-        # Still return ellipse for overlay continuity; mark as partial track
+        
         return {
             "detected": False,
             "status": "partial",
@@ -487,7 +463,7 @@ def analyze_ball_in_frame(
         px_per_mm = (baseline_minor_px / ref_mm) if baseline_minor_px else load_px / ref_mm
 
     load_px = _load_axis_extent_px(ell["ellipse"], vertical=True)
-    # Prefer ellipse minor axis when vertical projection is inflated by rotation/shadow
+    
     minor_px = float(ell["minor_px"])
     if baseline_minor_px and load_px > baseline_minor_px * 1.05 and minor_px < load_px:
         load_px = minor_px
@@ -497,7 +473,7 @@ def analyze_ball_in_frame(
     compression_pct = 0.0
     if baseline_minor_px and baseline_minor_px > 0 and not oversize and not undersize:
         compression_pct = max(0.0, (baseline_minor_px - load_px) / baseline_minor_px * 100.0)
-    # Impact compression above ~30% on phone video is almost always a bad contour
+    
     if compression_pct > 30.0 and ell["roundness"] > 0.78:
         compression_pct = 0.0
         oversize = True
@@ -522,9 +498,8 @@ def analyze_ball_in_frame(
         "ellipse": ell["ellipse"],
     }
 
-
 def _load_axis_extent_px(ellipse: dict, *, vertical: bool = True) -> float:
-    """Projected diameter along the load axis (vertical for floor bounce videos)."""
+    
     a = float(ellipse["a"])
     b = float(ellipse["b"])
     theta = np.deg2rad(float(ellipse["angle"]))
@@ -532,14 +507,13 @@ def _load_axis_extent_px(ellipse: dict, *, vertical: bool = True) -> float:
         return 2.0 * float(np.sqrt((a * np.sin(theta)) ** 2 + (b * np.cos(theta)) ** 2))
     return 2.0 * float(np.sqrt((a * np.cos(theta)) ** 2 + (b * np.sin(theta)) ** 2))
 
-
 def compute_baseline_from_video(
     cap: cv2.VideoCapture,
     ball_type: str = "tennis",
     *,
     prefer_in_air: bool = True,
 ) -> tuple[float, float]:
-    """Establish rest diameter from round in-air frames before ground contact."""
+    
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
@@ -585,7 +559,6 @@ def compute_baseline_from_video(
 
     baseline_px = _robust_median(samples)
     return baseline_px, baseline_px / ref_mm
-
 
 def compute_baseline_from_results(frame_results: list[dict], ball_type: str = "tennis") -> dict:
     ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])["diameter_mm"]
@@ -657,7 +630,6 @@ def compute_baseline_from_results(frame_results: list[dict], ball_type: str = "t
         "low_quality_mode": low_q,
     }
 
-
 class CompressionSmoother:
     def __init__(self, window: int = COMPRESSION_MEDIAN_WINDOW) -> None:
         self._hist: deque[float] = deque(maxlen=window)
@@ -676,9 +648,8 @@ class CompressionSmoother:
         self.max_compression = 0.0
         self.max_raw = 0.0
 
-
 class TemporalHeightFilter:
-    """Median-filter ball height across frames — fills brief drop-outs on noisy video."""
+    
 
     def __init__(self, window: int = TEMPORAL_HEIGHT_WINDOW) -> None:
         self._heights: deque[float] = deque(maxlen=window)

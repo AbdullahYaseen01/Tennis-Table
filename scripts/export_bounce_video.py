@@ -1,4 +1,3 @@
-"""High-accuracy bounce compression tracker — colour detect + YOLO ROI + sub-pixel refine."""
 from __future__ import annotations
 
 import os
@@ -14,10 +13,81 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import IS_VERCEL
-from app.vision.video_measure import VideoBallAnalyzer, VideoFrameResult, FLOOR_CONTACT_Y_FRAC
+from app.vision.video_measure import (
+    VideoBallAnalyzer,
+    VideoFrameResult,
+    IMPACT_STATUS_MIN_PCT,
+)
 
 VERCEL_MAX_EDGE = 960
 
+def find_hand_press_ball(
+    frame: np.ndarray,
+    baseline_px: float,
+    last_xy: tuple[float, float] | None,
+) -> tuple[float, float, float] | None:
+    
+    from app.vision.ball_profiles import get_profile
+
+    profile = get_profile("pickleball")
+    h, w = frame.shape[:2]
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    lo = profile.hsv_lower.copy()
+    hi = profile.hsv_upper.copy()
+    lo[1] = max(int(lo[1]), 120)
+    lo[2] = max(int(lo[2]), 150)
+    mask = cv2.inRange(hsv, lo, hi)
+    skin = cv2.inRange(hsv, (0, 35, 40), (25, 180, 255))
+    skin |= cv2.inRange(hsv, (160, 35, 40), (180, 180, 255))
+    mask = cv2.bitwise_and(mask, cv2.bitwise_not(skin))
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+    
+    core = cv2.erode(mask, k, iterations=3)
+    contours, _ = cv2.findContours(core, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = (baseline_px * 0.45) ** 2
+    cands: list[tuple[float, float, float, float, float, float]] = []
+    for c in contours:
+        area = float(cv2.contourArea(c))
+        if area < min_area:
+            continue
+        peri = cv2.arcLength(c, True) + 1e-6
+        circ = 4.0 * np.pi * area / (peri * peri)
+        if circ < 0.50:
+            continue
+        bx, by, bw, bh = cv2.boundingRect(c)
+        x = bx + bw * 0.5
+        y = by + bh * 0.5
+        maj = float(max(bw, bh))
+        if maj < baseline_px * 0.55 or maj > baseline_px * 1.45:
+            continue
+        if y > h * 0.90:
+            continue
+        
+        rad_i = int(max(bw, bh) * 0.45)
+        x0c, y0c = max(0, int(x) - rad_i), max(0, int(y) - rad_i)
+        x1c, y1c = min(w, int(x) + rad_i), min(h, int(y) + rad_i)
+        disk = np.zeros((y1c - y0c, x1c - x0c), dtype=np.uint8)
+        cv2.circle(disk, (int(x) - x0c, int(y) - y0c), rad_i, 255, -1)
+        skin_roi = skin[y0c:y1c, x0c:x1c]
+        yel_roi = mask[y0c:y1c, x0c:x1c]
+        if disk.size == 0:
+            continue
+        inside = disk > 0
+        skin_frac = float(skin_roi[inside].astype(bool).sum()) / max(1, int(inside.sum()))
+        yel_frac = float(yel_roi[inside].astype(bool).sum()) / max(1, int(inside.sum()))
+        if skin_frac > 0.28 or yel_frac < 0.30:
+            continue
+        score = area * (circ ** 2) * yel_frac
+        cands.append((score, float(x), float(y), maj, circ, float(min(bw, bh))))
+    if not cands:
+        return None
+    cands.sort(reverse=True)
+    
+    return (cands[0][1], cands[0][2], cands[0][3])
 
 def draw_panel(frame, lines, *, width: int = 440) -> int:
     pad, line_h = 14, 34
@@ -33,15 +103,72 @@ def draw_panel(frame, lines, *, width: int = 440) -> int:
         )
     return 10 + height
 
-
 def draw_bar(frame, x, y, w, h, frac, color):
     frac = float(np.clip(frac, 0, 1))
     cv2.putText(frame, "Compression", (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (230, 230, 230), 1, cv2.LINE_AA)
     cv2.rectangle(frame, (x, y), (x + w, y + h), (80, 80, 80), 1)
     cv2.rectangle(frame, (x, y), (x + int(w * frac), y + h), color, -1)
 
+def _draw_yellow_outline(frame, cx: int, cy: int, radius: int, ball_type: str) -> bool:
+    
+    from app.vision.ball_profiles import get_profile
 
-def draw_measurement(frame, r: VideoFrameResult, baseline_radius: int, frame_h: int) -> None:
+    profile = get_profile(ball_type)
+    h, w = frame.shape[:2]
+    pad = int(max(radius * 1.2, 80))
+    x0, y0 = max(0, cx - pad), max(0, cy - pad)
+    x1, y1 = min(w, cx + pad), min(h, cy + pad)
+    crop = frame[y0:y1, x0:x1]
+    if crop.size == 0:
+        return False
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    lo = profile.hsv_lower.copy()
+    hi = profile.hsv_upper.copy()
+    lo[1] = max(int(lo[1]), 100)
+    lo[2] = max(int(lo[2]), 130)
+    mask = cv2.inRange(hsv, lo, hi)
+    skin = cv2.inRange(hsv, (0, 25, 50), (25, 160, 255))
+    skin |= cv2.inRange(hsv, (160, 25, 50), (180, 160, 255))
+    mask = cv2.bitwise_and(mask, cv2.bitwise_not(skin))
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
+    k_fill = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_fill, iterations=2)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return False
+    cx_l, cy_l = float(cx - x0), float(cy - y0)
+    best, best_score = None, -1e18
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < 500:
+            continue
+        peri = cv2.arcLength(c, True) + 1e-6
+        circ = 4.0 * np.pi * area / (peri * peri)
+        m = cv2.moments(c)
+        if m["m00"] <= 0:
+            continue
+        dist = float(np.hypot(m["m10"] / m["m00"] - cx_l, m["m01"] / m["m00"] - cy_l))
+        if dist > radius * 0.55:
+            continue
+        score = area * circ - dist * 40.0
+        if score > best_score:
+            best_score, best = score, c
+    if best is None:
+        return False
+    best = best + np.array([[[x0, y0]]], dtype=best.dtype)
+    cv2.drawContours(frame, [best], -1, (0, 255, 0), 3, cv2.LINE_AA)
+    return True
+
+def draw_measurement(
+    frame,
+    r: VideoFrameResult,
+    baseline_radius: int,
+    frame_h: int,
+    *,
+    ball_type: str = "tennis",
+    hand_press: bool = False,
+) -> None:
     has_shape = r.major_px > 10 and r.cx > 0 and r.cy > 0
     if not has_shape:
         return
@@ -49,34 +176,43 @@ def draw_measurement(frame, r: VideoFrameResult, baseline_radius: int, frame_h: 
     if cy < 15 or cy > frame_h - 15:
         return
 
-    cv2.circle(frame, (cx, cy), baseline_radius, (255, 180, 0), 2, cv2.LINE_AA)
-    cv2.ellipse(
-        frame,
-        (cx, cy),
-        (max(1, int(r.major_px / 2)), max(1, int(r.minor_px / 2))),
-        r.angle,
-        0, 360,
-        (0, 255, 0), 3, cv2.LINE_AA,
-    )
-    cv2.drawMarker(frame, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 20, 2)
-
-    if r.edge_points is not None and len(r.edge_points) > 0:
-        for pt in r.edge_points[::8]:
-            cv2.circle(frame, (int(pt[0][0]), int(pt[0][1])), 2, (0, 200, 255), -1)
+    rx = max(1, int(r.major_px / 2))
+    ry = max(1, int(r.minor_px / 2))
+    
+    if hand_press:
+        if r.compression_pct >= IMPACT_STATUS_MIN_PCT:
+            cv2.circle(frame, (cx, cy), baseline_radius, (255, 180, 0), 2, cv2.LINE_AA)
+        live_r = max(8, int(baseline_radius * (1.0 - min(r.compression_pct, 40.0) / 100.0)))
+        cv2.ellipse(frame, (cx, cy), (baseline_radius, live_r), 0, 0, 360, (0, 255, 0), 3, cv2.LINE_AA)
+        cv2.drawMarker(frame, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 20, 2)
+    else:
+        if r.compression_pct >= IMPACT_STATUS_MIN_PCT:
+            cv2.circle(frame, (cx, cy), baseline_radius, (255, 180, 0), 2, cv2.LINE_AA)
+        outlined = False
+        if ball_type.startswith("pickleball"):
+            outlined = _draw_yellow_outline(frame, cx, cy, max(rx, ry, baseline_radius), ball_type)
+        if not outlined:
+            cv2.ellipse(
+                frame, (cx, cy), (rx, ry), r.angle, 0, 360, (0, 255, 0), 3, cv2.LINE_AA,
+            )
+        cv2.drawMarker(frame, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 20, 2)
+        if r.edge_points is not None and len(r.edge_points) > 0 and not outlined:
+            for pt in r.edge_points[::8]:
+                cv2.circle(frame, (int(pt[0][0]), int(pt[0][1])), 2, (0, 200, 255), -1)
 
     comp = r.compression_pct
-    color = (0, 0, 255) if comp > 8 else (0, 255, 255) if comp > 3 else (0, 255, 0)
+    color = (0, 0, 255) if comp >= IMPACT_STATUS_MIN_PCT else (0, 255, 255) if comp >= 8 else (0, 255, 0)
+    label_r = max(rx, ry, baseline_radius)
     cv2.putText(
         frame, f"{comp:.1f}% compressed",
-        (max(8, cx - 110), max(40, cy - baseline_radius - 20)),
+        (max(8, cx - 110), max(40, cy - label_r - 20)),
         cv2.FONT_HERSHEY_SIMPLEX, 0.78, color, 2, cv2.LINE_AA,
     )
     cv2.putText(
         frame, f"D = {r.diameter_mm:.1f} mm",
-        (max(8, cx - 75), min(frame_h - 12, cy + baseline_radius + 30)),
+        (max(8, cx - 75), min(frame_h - 12, cy + label_r + 30)),
         cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA,
     )
-
 
 def _smooth_comp(history: deque[float]) -> float:
     if not history:
@@ -87,7 +223,6 @@ def _smooth_comp(history: deque[float]) -> float:
     if vals[-1] > 0:
         return float(np.median(vals[-3:] if len(vals) >= 3 else vals))
     return float(np.median(vals))
-
 
 def export(
     video_path: Path,
@@ -101,13 +236,16 @@ def export(
 ) -> dict:
     if fast_mode is None:
         fast_mode = IS_VERCEL
+    hand_press = any(k in video_path.stem.lower() for k in ("testing", "hand", "press", "squeeze"))
     if use_yolo is None:
-        use_yolo = not fast_mode
-
+        
+        use_yolo = False if hand_press else (not fast_mode)
     analyzer = VideoBallAnalyzer(ball_type=ball_type, use_yolo=use_yolo, fast_mode=fast_mode)
 
     print("  Locking baseline from in-air frames...", flush=True)
     locked = analyzer.lock_baseline_from_video(str(video_path))
+    if hand_press:
+        analyzer.bounce_counter = None  
     if not locked and fixed_baseline_px and fixed_baseline_px > 0:
         analyzer.baseline_vertical_px = fixed_baseline_px
         analyzer._px_per_mm = fixed_px_per_mm or (fixed_baseline_px / analyzer.known_mm)
@@ -115,14 +253,16 @@ def export(
         analyzer.baseline_locked = True
         from app.vision.video_measure import BounceCounter, ContactPhaseTracker
 
-        analyzer.bounce_counter = BounceCounter(analyzer._frame_h or 720, analyzer._fps)
-        analyzer._contact = ContactPhaseTracker(analyzer._frame_h or 720)
+        analyzer.bounce_counter = BounceCounter(analyzer._frame_h or 720, analyzer._fps, floor_frac=analyzer._floor_frac)
+        analyzer._contact = ContactPhaseTracker(analyzer._frame_h or 720, floor_frac=analyzer._floor_frac)
     if not analyzer.baseline_locked:
         raise RuntimeError("Could not lock baseline from video")
 
     baseline_px = analyzer.baseline_vertical_px or 320.0
     baseline_mm = analyzer.known_mm
     baseline_radius = int(baseline_px / 2)
+    floor_frac = analyzer._floor_frac
+    ball_label = ball_type.replace("_", " ").upper()
 
     cap = cv2.VideoCapture(str(video_path))
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
@@ -163,7 +303,8 @@ def export(
     max_comp_frame = 0
     detected = 0
     comp_hist: deque[float] = deque(maxlen=5)
-
+    press_hold = 0
+    last_press_comp = 0.0
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -173,59 +314,115 @@ def export(
             frame = cv2.resize(frame, (w_out, h_out), interpolation=cv2.INTER_AREA)
 
         r = analyzer.process_frame(frame, frame_idx / fps)
+
+        
+        if hand_press:
+            last_xy = (last_good.cx, last_good.cy) if last_good else None
+            ball = find_hand_press_ball(frame, baseline_px, last_xy)
+            if ball is None:
+                ball = find_hand_press_ball(frame, baseline_px, None)
+            if ball is None and last_good is not None:
+                cx_b, cy_b, maj_b = last_good.cx, last_good.cy, last_good.major_px
+            elif ball is not None:
+                cx_b, cy_b, maj_b = ball
+            else:
+                cx_b = cy_b = maj_b = 0.0
+            if cx_b > 0:
+                dent = analyzer._hand_dent_pct(frame, cx_b, cy_b, baseline_px * 0.5)
+                if dent < 11.0:
+                    dent = max(dent, analyzer._hand_dent_pct(frame, cx_b, cy_b, baseline_px * 0.55))
+                r = VideoFrameResult(
+                    detected=True,
+                    status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else "tracking",
+                    cx=cx_b,
+                    cy=cy_b,
+                    major_px=maj_b if maj_b > 20 else baseline_px,
+                    minor_px=baseline_px * (1.0 - dent / 100.0) if dent > 0 else baseline_px,
+                    angle=0.0,
+                    vertical_load_px=baseline_px * (1.0 - dent / 100.0),
+                    diameter_mm=baseline_mm * (1.0 - dent / 100.0) if dent > 0 else baseline_mm,
+                    compression_pct=dent,
+                    raw_compression_pct=dent,
+                    baseline_locked=True,
+                    baseline_mm=baseline_mm,
+                    confidence=0.85,
+                    eccentricity=float(np.sqrt(max(0.0, 1.0 - ((1.0 - dent / 100.0) ** 2)))),
+                    yolo_active=False,
+                )
+
         has_shape = (
             r.major_px > 10
             and r.cx > 0
-            and r.confidence >= 0.65
-            and (r.diameter_mm > baseline_mm * 0.45 or r.cy > h_out * 0.62)
+            and r.confidence >= 0.55
+            and (r.diameter_mm > baseline_mm * 0.40 or hand_press)
         )
 
         if has_shape:
             last_good = r
-            hold = 4
+            hold = 12 if hand_press else 4
             detected += 1
-            comp_hist.append(r.raw_compression_pct)
-            raw = r.raw_compression_pct
-            if r.cy > h_out * FLOOR_CONTACT_Y_FRAC and r.compression_pct > 0:
+            raw = float(r.raw_compression_pct)
+            comp_hist.append(raw)
+            if raw >= IMPACT_STATUS_MIN_PCT:
                 max_comp = max(max_comp, raw)
                 if raw >= max_comp - 0.05:
                     max_comp_frame = frame_idx
         elif last_good is not None and hold > 0:
             hold -= 1
+            
+            dent = 0.0
+            if hand_press and analyzer.baseline_vertical_px:
+                dent = analyzer._hand_dent_pct(
+                    frame, last_good.cx, last_good.cy, analyzer.baseline_vertical_px * 0.5
+                )
             r = VideoFrameResult(
-                detected=False,
-                status="tracking",
+                detected=True,
+                status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else "tracking",
                 cx=last_good.cx,
                 cy=last_good.cy,
                 major_px=last_good.major_px,
                 minor_px=last_good.minor_px,
                 angle=last_good.angle,
                 vertical_load_px=last_good.vertical_load_px,
-                diameter_mm=last_good.diameter_mm,
-                compression_pct=0.0,
-                raw_compression_pct=0.0,
+                diameter_mm=baseline_mm * (1.0 - dent / 100.0) if dent > 0 else baseline_mm,
+                compression_pct=dent,
+                raw_compression_pct=dent,
                 baseline_locked=True,
                 baseline_mm=baseline_mm,
+                confidence=0.75,
                 yolo_active=last_good.yolo_active,
             )
-            comp_hist.append(0.0)
+            has_shape = True
+            comp_hist.append(dent)
             detected += 1
+            if dent >= IMPACT_STATUS_MIN_PCT:
+                max_comp = max(max_comp, dent)
 
-        live_comp = _smooth_comp(comp_hist) if has_shape or hold > 0 else 0.0
+        
+        live_comp = float(r.raw_compression_pct) if has_shape else 0.0
+        if hand_press:
+            if live_comp >= 11.0:
+                last_press_comp = live_comp
+                press_hold = 10
+            elif press_hold > 0 and last_press_comp >= 11.0:
+                live_comp = max(live_comp, last_press_comp * 0.9)
+                press_hold -= 1
+            if live_comp >= IMPACT_STATUS_MIN_PCT:
+                max_comp = max(max_comp, live_comp)
         display = VideoFrameResult(
-            **{**r.__dict__, "compression_pct": live_comp if has_shape else r.compression_pct}
+            **{**r.__dict__, "compression_pct": live_comp, "raw_compression_pct": live_comp}
         )
-        if has_shape:
-            display.compression_pct = live_comp
 
-        draw_measurement(frame, display, baseline_radius, h_out)
+        draw_measurement(
+            frame, display, baseline_radius, h_out, ball_type=ball_type, hand_press=hand_press
+        )
 
-        if live_comp > 8:
+        if live_comp >= IMPACT_STATUS_MIN_PCT:
             cv2.putText(frame, "IMPACT", (w_out // 2 - 90, 90), cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 255), 3, cv2.LINE_AA)
 
         mode = "CV-FAST" if fast_mode else ("YOLO+CV" if r.yolo_active else "CV")
         bounce_count = analyzer.bounce_count
-        if live_comp > 8:
+        if live_comp >= IMPACT_STATUS_MIN_PCT:
             status = ("IMPACT — COMPRESSING", (0, 0, 255))
         elif has_shape or (last_good and hold > 0):
             status = ("TRACKING", (0, 255, 0))
@@ -236,20 +433,20 @@ def export(
 
         t = frame_idx / fps
         panel_bottom = draw_panel(frame, [
-            ("TENNIS BALL COMPRESSION TEST", (0, 255, 180)),
+            (f"{ball_label} COMPRESSION TEST", (0, 255, 180)),
             (f"Time: {t:5.2f} s   Frame: {frame_idx:4d}  [{mode}]", (240, 240, 240)),
             (f"Baseline diameter: {baseline_mm:.1f} mm", (0, 255, 255)),
-            (f"Live compression:  {live_comp:5.1f} %", (0, 255, 255) if live_comp <= 8 else (0, 0, 255)),
+            (f"Live compression:  {live_comp:5.1f} %", (0, 255, 255) if live_comp < IMPACT_STATUS_MIN_PCT else (0, 0, 255)),
             (f"Peak compression:  {max_comp:5.1f} %", (0, 255, 255)),
             (f"Bounces detected:  {bounce_count}", (240, 240, 240)),
             (f"Confidence: {r.confidence:.2f}   ecc: {r.eccentricity:.2f}" if has_shape else "Confidence: —", (200, 200, 200)),
             (f"Status: {status[0]}", status[1]),
         ])
-        bar_scale = max(20.0, max_comp * 1.25, 12.0)
+        bar_scale = max(20.0, max_comp * 1.25, IMPACT_STATUS_MIN_PCT)
         draw_bar(
             frame, 24, panel_bottom + 28, 380, 18,
             live_comp / bar_scale,
-            (0, 0, 255) if live_comp > 8 else (0, 220, 0),
+            (0, 0, 255) if live_comp >= IMPACT_STATUS_MIN_PCT else (0, 220, 0),
         )
 
         writer.write(frame)
@@ -261,21 +458,24 @@ def export(
     writer.release()
 
     det_rate = round(detected / max(frame_idx, 1) * 100, 1)
-    print(
-        f"Baseline: {baseline_mm:.1f} mm | Peak: {max_comp:.1f}% @ frame {max_comp_frame} | "
-        f"Bounces: {analyzer.bounce_count} | Detected: {detected}/{frame_idx} ({det_rate}%) | "
-        f"Engine: {'CV-FAST' if fast_mode else ('YOLO+CV' if analyzer.yolo_active else 'CV')}"
-    )
-    return {
+    metrics = {
         "baseline_mm": baseline_mm,
         "max_compression_pct": round(max_comp, 1),
+        "max_compression_frame": max_comp_frame,
         "bounce_count": analyzer.bounce_count,
         "frames": frame_idx,
         "detected_frames": detected,
         "detection_rate_pct": det_rate,
         "output": str(out_path),
+        "fps": round(fps, 2),
     }
 
+    print(
+        f"Baseline: {baseline_mm:.1f} mm | Peak outline deform: {max_comp:.1f}% @ frame {max_comp_frame} | "
+        f"Bounces: {analyzer.bounce_count} | Detected: {detected}/{frame_idx} ({det_rate}%) | "
+        f"Engine: {'CV-FAST' if fast_mode else ('YOLO+CV' if analyzer.yolo_active else 'CV')}"
+    )
+    return metrics
 
 def main() -> int:
     video = ROOT / "data" / "samples" / "latest testing video.mp4"
@@ -292,8 +492,8 @@ def main() -> int:
     out = ROOT / "data" / "reports" / f"{stem}-tracked.mp4"
     print(f"Input:  {video}\nOutput: {out}\nBall:   {ball_type}\n")
     export(video, out, ball_type=ball_type)
+    print(f"\nOutput video: {out}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

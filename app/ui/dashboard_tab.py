@@ -1,4 +1,3 @@
-"""Fast, professional run history dashboard."""
 from __future__ import annotations
 
 import numpy as np
@@ -34,7 +33,6 @@ from app.ui.theme import (
 
 pg.setConfigOptions(antialias=False, useOpenGL=False)
 
-
 class _DashboardLoader(QThread):
     runs_loaded = Signal(list, list)
 
@@ -49,7 +47,6 @@ class _DashboardLoader(QThread):
         ball_ids = db.list_ball_ids(ball_type=self._ball_type)
         self.runs_loaded.emit(runs, ball_ids)
 
-
 class _RunDetailLoader(QThread):
     detail_loaded = Signal(int, object)
 
@@ -63,9 +60,8 @@ class _RunDetailLoader(QThread):
         run = db.get_run(self._run_id, decimate=True)
         self.detail_loaded.emit(self._run_id, run)
 
-
 class DashboardTab(QWidget):
-    """Optimized dashboard — background loading, reusable charts."""
+    
 
     def __init__(self, db: RunDatabase, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -192,8 +188,8 @@ class DashboardTab(QWidget):
         frame = QFrame()
         frame.setObjectName("statChip")
         frame.setStyleSheet(
-            "QFrame#statChip { background: #1a2332; border: 1px solid rgba(255,255,255,0.08); "
-            "border-radius: 8px; }"
+            
+            
         )
         lay = QVBoxLayout(frame)
         lay.setSpacing(2)
@@ -205,11 +201,11 @@ class DashboardTab(QWidget):
         v.setStyleSheet("color: #f1f5f9; font-size: 16px; font-weight: 700;")
         lay.addWidget(t)
         lay.addWidget(v)
-        frame._value_label = v  # type: ignore[attr-defined]
+        frame._value_label = v  
         return frame
 
     def _set_stat(self, chip: QFrame, value: str) -> None:
-        chip._value_label.setText(value)  # type: ignore[attr-defined]
+        chip._value_label.setText(value)  
 
     def _init_plot_items(self) -> None:
         self._comp_curve = self.compression_plot.plot(pen=pg.mkPen(CHART_COMPRESSION, width=2))

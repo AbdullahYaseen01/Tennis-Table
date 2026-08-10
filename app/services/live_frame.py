@@ -1,4 +1,3 @@
-"""Single-frame and multi-frame analysis for live webcam accuracy."""
 from __future__ import annotations
 
 import cv2
@@ -11,15 +10,12 @@ from app.vision.bounce_measure import (
     compute_baseline_from_results,
 )
 
-# Re-export for backwards compatibility
 BASELINE_TARGET_FRAMES = BASELINE_TARGET_FRAMES
 MIN_BASELINE_GOOD_FRAMES = MIN_BASELINE_GOOD_FRAMES
-
 
 def decode_image(data: bytes) -> np.ndarray | None:
     arr = np.frombuffer(data, np.uint8)
     return cv2.imdecode(arr, cv2.IMREAD_COLOR)
-
 
 def analyze_jpeg_bytes(
     jpeg: bytes,
@@ -37,7 +33,6 @@ def analyze_jpeg_bytes(
         baseline_minor_px=baseline_minor,
         px_per_mm=px_per_mm,
     )
-
 
 def compute_baseline_from_frames(frame_results: list[dict], ball_type: str = "tennis") -> dict:
     return compute_baseline_from_results(frame_results, ball_type=ball_type)

@@ -16,17 +16,33 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Runtime / generated data
+# Runtime / generated data — do not push
 data/uploads/
 data/outputs/
 data/runs.db
-data/reports/*.mp4
-data/reports/*.avi
-data/reports/golf-debug-*.jpg
+data/reports/
+data/samples/
+data/calib/
 
-# Large model weights (optional local)
+# Media / screenshots
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.pdf
+
+# Large model weights
 yolov8n.pt
+*.pt
+*.onnx
+*.npz
 
 # Build
 dist/
 build/
+.vercel/

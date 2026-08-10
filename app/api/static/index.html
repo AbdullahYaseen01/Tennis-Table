@@ -229,6 +229,12 @@
       background: linear-gradient(135deg, var(--teal), #00a884);
       color: #0b0f14; box-shadow: 0 4px 24px rgba(0,212,170,0.3); text-decoration: none;
     }
+    .btn-dashboard {
+      background: linear-gradient(135deg, var(--sky), #339af0);
+      color: #0b0f14; box-shadow: 0 4px 24px rgba(77,171,247,0.3); text-decoration: none;
+      margin-top: 0.65rem;
+    }
+    .results-actions { display: flex; flex-direction: column; gap: 0; margin-top: 1rem; }
 
     .countdown-overlay {
       position: absolute; inset: 0; z-index: 3;
@@ -321,8 +327,13 @@
           <div class="file-name" id="fileName"></div>
         </div>
         <div class="tips-box">
-          <strong>For best accuracy:</strong> use a dark mat, bright ball (yellow tennis or white golf),
+          <strong>For best accuracy:</strong> use a dark mat, bright ball (yellow tennis, neon pickleball, or white golf),
           camera fixed on tripod, ball fully visible — not cut at frame edges.
+        </div>
+        <div class="btn-row" style="margin-top:0.75rem;margin-bottom:0.5rem;">
+          <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="tennis">🎾 Tennis</button>
+          <button class="btn btn-secondary ball-type-btn" type="button" data-ball="pickleball">🏓 Pickleball</button>
+          <button class="btn btn-secondary ball-type-btn" type="button" data-ball="golf">⛳ Golf / White</button>
         </div>
         <button class="btn btn-primary" id="analyzeBtn" disabled>Analyze Video (frame-by-frame)</button>
       </div>
@@ -336,18 +347,19 @@
           <div class="cam-wiz-step" data-cam-step="5"><span class="cam-wiz-num">5</span>Results</div>
         </div>
 
-        <!-- Step 1: Setup checklist -->
+        
         <div class="cam-step-panel active" id="camStep1">
           <div class="step-card">
             <h3>Step 1 — Prepare your test area</h3>
             <p>Select ball type and confirm setup before starting the camera.</p>
             <div class="btn-row" style="margin-top:0.75rem;margin-bottom:0.5rem;">
-              <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="tennis">🎾 Tennis Ball</button>
-              <button class="btn btn-secondary ball-type-btn" type="button" data-ball="golf">⛳ Golf / White Ball</button>
+              <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="tennis">🎾 Tennis</button>
+              <button class="btn btn-secondary ball-type-btn" type="button" data-ball="pickleball">🏓 Pickleball</button>
+              <button class="btn btn-secondary ball-type-btn" type="button" data-ball="golf">⛳ Golf / White</button>
             </div>
             <ul class="checklist" id="setupChecklist">
               <li id="chk1">Dark background (black/grey mat or table)</li>
-              <li id="chk2">Bright ball — yellow tennis or white golf ball</li>
+              <li id="chk2">Bright ball — yellow tennis, neon pickleball, or white golf</li>
               <li id="chk3">Camera on tripod, pointing down at the ball</li>
               <li id="chk4">Ball will be fully inside the frame (not at edges)</li>
               <li id="chk5">Good lighting — no heavy shadows on the ball</li>
@@ -356,7 +368,7 @@
           <button class="btn btn-primary" id="camNext1" type="button">I've prepared everything →</button>
         </div>
 
-        <!-- Step 2: Start camera -->
+        
         <div class="cam-step-panel" id="camStep2">
           <div class="step-card">
             <h3>Step 2 — Start camera & verify detection</h3>
@@ -396,7 +408,7 @@
           </div>
         </div>
 
-        <!-- Step 3: Baseline capture -->
+        
         <div class="cam-step-panel" id="camStep3">
           <div class="step-card">
             <h3>Step 3 — Lock baseline (60 frames)</h3>
@@ -436,7 +448,7 @@
           </div>
         </div>
 
-        <!-- Step 4: Record test -->
+        
         <div class="cam-step-panel" id="camStep4">
           <div class="step-card">
             <h3>Step 4 — Record bounce test (15 seconds)</h3>
@@ -516,7 +528,10 @@
         </div>
       </div>
       <div class="accuracy-banner" id="accuracyBanner" style="display:none;"></div>
-      <a class="btn btn-download" id="downloadBtn" href="#" download>⬇ Download Annotated Video</a>
+      <div class="results-actions">
+        <a class="btn btn-download" id="downloadBtn" href="#" download>⬇ Download Annotated Video</a>
+        <a class="btn btn-dashboard" id="dashboardBtn" href="#" target="_blank" style="display:none">📊 View Graphs Dashboard</a>
+      </div>
       <button class="btn again" id="againBtn">Test again</button>
     </section>
   </div>
@@ -541,6 +556,7 @@
     const progressSub = document.getElementById("progressSub");
     const errorBox = document.getElementById("errorBox");
     const downloadBtn = document.getElementById("downloadBtn");
+    const dashboardBtn = document.getElementById("dashboardBtn");
     const againBtn = document.getElementById("againBtn");
     const steps = [document.getElementById("step1"), document.getElementById("step2"), document.getElementById("step3")];
 
@@ -720,6 +736,12 @@
 
       downloadBtn.href = "/download/" + jobId;
       downloadBtn.download = downloadName;
+      if (r.dashboard) {
+        dashboardBtn.href = "/dashboard/" + jobId;
+        dashboardBtn.style.display = "flex";
+      } else {
+        dashboardBtn.style.display = "none";
+      }
     }
 
     function startPolling(jobId, downloadName, extra) {

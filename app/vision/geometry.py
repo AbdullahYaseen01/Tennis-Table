@@ -1,11 +1,9 @@
-"""High-accuracy geometry: sub-pixel edges and robust ellipse fitting."""
 from __future__ import annotations
 
 import cv2
 import numpy as np
 
 from app.config import SUBPIXEL_RAYS
-
 
 def bilinear_sample(image: np.ndarray, x: float, y: float) -> float:
     h, w = image.shape[:2]
@@ -20,9 +18,8 @@ def bilinear_sample(image: np.ndarray, x: float, y: float) -> float:
         + image[iy + 1, ix + 1] * fx * fy
     )
 
-
 def prepare_gray(frame_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """CLAHE-enhanced gray + Sobel gradient magnitude for edge search."""
+    
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
@@ -32,11 +29,10 @@ def prepare_gray(frame_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     grad_mag = cv2.magnitude(gx, gy)
     return gray, grad_mag
 
-
 def _ellipse_radius_at_angle(
     cx: float, cy: float, a: float, b: float, angle_deg: float, px: float, py: float
 ) -> float:
-    """Expected radius from center to ellipse boundary at point angle."""
+    
     dx, dy = px - cx, py - cy
     theta = np.arctan2(dy, dx) - np.deg2rad(angle_deg)
     cos_t, sin_t = np.cos(theta), np.sin(theta)
@@ -44,7 +40,6 @@ def _ellipse_radius_at_angle(
     if denom < 1e-9:
         return max(a, b)
     return float(a * b / np.sqrt(denom))
-
 
 def fit_ellipse(contour: np.ndarray) -> tuple | None:
     if contour is None or len(contour) < 5:
@@ -54,7 +49,6 @@ def fit_ellipse(contour: np.ndarray) -> tuple | None:
     except cv2.error:
         return None
 
-
 def fit_ellipse_robust(
     points: np.ndarray,
     *,
@@ -62,7 +56,7 @@ def fit_ellipse_robust(
     max_iterations: int = 5,
     outlier_sigma: float = 2.5,
 ) -> tuple | None:
-    """Iteratively reweighted ellipse fit — rejects outlier edge points."""
+    
     pts = points.reshape(-1, 2).astype(np.float64)
     if len(pts) < 8:
         return fit_ellipse(points.astype(np.float32).reshape(-1, 1, 2))
@@ -104,7 +98,6 @@ def fit_ellipse_robust(
         return None
     return ellipse
 
-
 def fit_ellipse_ransac(
     points: np.ndarray,
     *,
@@ -112,7 +105,7 @@ def fit_ellipse_ransac(
     inlier_threshold_px: float = 2.0,
     min_inlier_ratio: float = 0.55,
 ) -> tuple | None:
-    """RANSAC ellipse fit for heavily noisy edge sets."""
+    
     pts = points.reshape(-1, 2).astype(np.float64)
     n = len(pts)
     if n < 8:
@@ -146,7 +139,7 @@ def fit_ellipse_ransac(
     if best_ellipse is None or best_inliers / n < min_inlier_ratio:
         return fit_ellipse_robust(points)
 
-    # Refit on inliers
+    
     center, axes, angle = best_ellipse
     cx, cy = float(center[0]), float(center[1])
     a, b = float(max(axes)) / 2, float(min(axes)) / 2
@@ -160,7 +153,6 @@ def fit_ellipse_ransac(
         return fit_ellipse_robust(np.array(inlier_pts, dtype=np.float32).reshape(-1, 1, 2))
     return best_ellipse
 
-
 def refine_radial_edges(
     gray: np.ndarray,
     grad_mag: np.ndarray,
@@ -170,10 +162,7 @@ def refine_radial_edges(
     n_rays: int = SUBPIXEL_RAYS,
     mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Cast radial rays outward; find edge via mask boundary + gradient sub-pixel fit.
-    Returns (edge_points Nx1x2, per-point gradient weights).
-    """
+    
     cx, cy = center
     major, minor = axes[0] / 2, axes[1] / 2
     angle_rad = np.deg2rad(angle_deg)
@@ -223,7 +212,7 @@ def refine_radial_edges(
             py = cy + direction[1] * r
             if px < 2 or px >= w - 2 or py < 2 or py >= h - 2:
                 continue
-            # Central difference on gradient magnitude
+            
             dr = 0.5
             g0 = bilinear_sample(grad_mag, px - direction[0] * dr, py - direction[1] * dr)
             g1 = bilinear_sample(grad_mag, px + direction[0] * dr, py + direction[1] * dr)
@@ -234,16 +223,16 @@ def refine_radial_edges(
         if len(grads) < 7:
             continue
 
-        # Outermost strong peak — true ball silhouette, not inner fuzz texture
+        
         g_arr = np.array(grads)
         r_arr = np.array(valid_r)
         peak_threshold = max(float(np.max(g_arr)) * 0.45, float(np.percentile(g_arr, 85)))
         candidates = np.where(g_arr >= peak_threshold)[0]
-        peak_idx = int(candidates[-1])  # outermost qualifying peak
+        peak_idx = int(candidates[-1])  
         r_peak = float(r_arr[peak_idx])
         w = float(mags[peak_idx])
 
-        # Sub-pixel parabolic refinement on gradient
+        
         if 0 < peak_idx < len(grads) - 1:
             g0, g1, g2 = grads[peak_idx - 1], grads[peak_idx], grads[peak_idx + 1]
             denom = 2 * (g0 - 2 * g1 + g2)
@@ -254,7 +243,7 @@ def refine_radial_edges(
 
         r_grad = r_peak
         if r_mask_edge is not None:
-            # Fuse silhouette mask boundary with gradient peak for best accuracy
+            
             r_peak = 0.32 * r_mask_edge + 0.68 * r_grad
         else:
             r_peak = r_grad
@@ -270,7 +259,6 @@ def refine_radial_edges(
     pts = np.array(points, dtype=np.float32).reshape(-1, 1, 2)
     return pts, np.array(weights, dtype=np.float64)
 
-
 def fit_ellipse_from_edges(
     gray: np.ndarray,
     grad_mag: np.ndarray,
@@ -281,10 +269,7 @@ def fit_ellipse_from_edges(
     *,
     two_pass: bool = True,
 ) -> tuple[tuple | None, np.ndarray, np.ndarray]:
-    """
-    Full edge pipeline: radial refine → robust fit → optional second pass.
-    Returns (ellipse, edge_points, weights).
-    """
+    
     edge_pts, weights = refine_radial_edges(
         gray, grad_mag, center, axes, angle_deg, SUBPIXEL_RAYS, mask=mask
     )
@@ -310,11 +295,9 @@ def fit_ellipse_from_edges(
 
     return refined, edge_pts, weights
 
-
 def equivalent_diameter_px(major_px: float, minor_px: float) -> float:
-    """Geometric mean diameter — stable for slightly elliptical silhouettes."""
+    
     return float(2.0 * np.sqrt((major_px / 2) * (minor_px / 2)))
-
 
 def eccentricity(major_px: float, minor_px: float) -> float:
     if major_px <= 1e-6:

@@ -1,4 +1,3 @@
-"""Unified high-accuracy video measurement — colour detect + YOLO ROI + sub-pixel refine."""
 from __future__ import annotations
 
 import logging
@@ -7,7 +6,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from app.config import COLOR_PROFILES, REFERENCE_DIAMETERS_MM
+from app.vision.ball_profiles import floor_contact_y_frac, get_profile, reference_diameter_mm
+from app.config import REFERENCE_DIAMETERS_MM
 from app.vision.bounce_measure import analyze_ball_in_frame, compute_baseline_from_video
 from app.vision.calibration import Calibrator
 from app.vision.detect import BallDetector
@@ -22,24 +22,47 @@ BOUNCE_MIN_GAP_FRAMES = 45
 REBOUND_DROP_PX = 28
 CONTACT_PEAK_WINDOW = 18
 
+COMP_ASPECT_MIN = 1.16
+COMP_ASPECT_STRONG = 1.28
+COMP_ROUNDNESS_MAX = 0.87
+COMP_REPORT_MIN_PCT = 8.0
+IMPACT_STATUS_MIN_PCT = 12.0
 
 class ContactPhaseTracker:
-    """Detect real floor contact — bottom of frame and at descent peak, not in-air fall."""
+    
 
-    def __init__(self, frame_h: int) -> None:
+    def __init__(self, frame_h: int, *, floor_frac: float = FLOOR_CONTACT_Y_FRAC) -> None:
         self.frame_h = frame_h
+        self.floor_frac = floor_frac
         self._cy_window: list[float] = []
 
+    def on_floor(self, cy: float) -> bool:
+        
+        return cy >= self.frame_h * self.floor_frac
+
     def in_contact(self, cy: float) -> bool:
-        floor_y = self.frame_h * FLOOR_CONTACT_Y_FRAC
-        if cy < floor_y:
+        
+        if not self.on_floor(cy):
             return False
+        
+        if self._cy_window:
+            ref = float(np.median(self._cy_window[-5:]))
+            if abs(cy - ref) > 70:
+                return True  
         self._cy_window.append(cy)
         if len(self._cy_window) > CONTACT_PEAK_WINDOW:
             self._cy_window.pop(0)
-        peak = max(self._cy_window)
-        return cy >= peak - REBOUND_DROP_PX
-
+        
+        arr = np.asarray(self._cy_window, dtype=np.float64)
+        peak = float(np.percentile(arr, 90)) if len(arr) >= 4 else float(arr.max())
+        if cy < peak - REBOUND_DROP_PX:
+            
+            return cy >= self.frame_h * (self.floor_frac + 0.02)
+        if cy < self.frame_h * (self.floor_frac + 0.06) and len(self._cy_window) >= 3:
+            recent_vel = self._cy_window[-1] - self._cy_window[-3]
+            if recent_vel > 18:
+                return False
+        return True
 
 @dataclass
 class VideoFrameResult:
@@ -62,12 +85,10 @@ class VideoFrameResult:
     yolo_active: bool = False
     ellipse: dict | None = None
 
-
 def vertical_load_px(major_px: float, minor_px: float, angle: float) -> float:
     a, b = major_px / 2.0, minor_px / 2.0
     theta = np.deg2rad(angle)
     return 2.0 * float(np.sqrt((a * np.sin(theta)) ** 2 + (b * np.cos(theta)) ** 2))
-
 
 def visible_height_px(edge_points: np.ndarray | None, major_px: float, minor_px: float, angle: float) -> float:
     vload = vertical_load_px(major_px, minor_px, angle)
@@ -79,12 +100,12 @@ def visible_height_px(edge_points: np.ndarray | None, major_px: float, minor_px:
         return vload
     return min(vload, span)
 
-
 class BounceCounter:
-    """Count one bounce per floor contact using deepest Y then rebound."""
+    
 
-    def __init__(self, frame_h: int, fps: float) -> None:
+    def __init__(self, frame_h: int, fps: float, *, floor_frac: float = FLOOR_CONTACT_Y_FRAC) -> None:
         self.frame_h = frame_h
+        self.floor_frac = floor_frac
         self.min_gap = max(BOUNCE_MIN_GAP_FRAMES, int(fps * 1.4))
         self.bounces = 0
         self._last_bounce = -9999
@@ -92,14 +113,27 @@ class BounceCounter:
         self._peak_cy = 0.0
         self._peak_frame = -1
         self._armed = False
+        self._min_cy = 1e9
+
+    def _real_drop(self) -> bool:
+        
+        return (self._peak_cy - self._min_cy) >= self.frame_h * 0.22
 
     def update(self, frame_idx: int, cy: float, *, reliable: bool) -> int:
-        floor_band = self.frame_h * FLOOR_CONTACT_Y_FRAC
+        if reliable:
+            self._min_cy = min(self._min_cy, cy)
+        floor_band = self.frame_h * self.floor_frac
         if not reliable or cy < floor_band:
-            if self._in_floor and self._armed and self._peak_cy - cy > 18:
-                if self._peak_frame - self._last_bounce >= self.min_gap:
-                    self.bounces += 1
-                    self._last_bounce = self._peak_frame
+            if (
+                self._in_floor
+                and self._armed
+                and self._real_drop()
+                and self._peak_cy >= self.frame_h * 0.90
+                and self._peak_cy - cy > 55
+                and self._peak_frame - self._last_bounce >= self.min_gap
+            ):
+                self.bounces += 1
+                self._last_bounce = self._peak_frame
             self._in_floor = False
             self._armed = False
             return self.bounces
@@ -115,12 +149,16 @@ class BounceCounter:
             self._peak_cy = max(self._peak_cy, cy)
             self._peak_frame = frame_idx
         elif self._armed and self._peak_cy - cy > 22:
-            if self._peak_frame - self._last_bounce >= self.min_gap:
+            if (
+                self._real_drop()
+                and self._peak_cy >= self.frame_h * 0.90
+                and self._peak_cy - cy > 55
+                and self._peak_frame - self._last_bounce >= self.min_gap
+            ):
                 self.bounces += 1
                 self._last_bounce = self._peak_frame
             self._armed = False
         return self.bounces
-
 
 class VideoBallAnalyzer:
     def __init__(
@@ -133,7 +171,8 @@ class VideoBallAnalyzer:
         from app.config import IS_VERCEL
 
         self.ball_type = ball_type
-        self.known_mm = REFERENCE_DIAMETERS_MM.get(ball_type, 67.0)
+        self.known_mm = reference_diameter_mm(ball_type)
+        self._floor_frac = floor_contact_y_frac(ball_type)
         self._fast = fast_mode or IS_VERCEL
         self.calibrator = Calibrator()
         self.detector = BallDetector(self.calibrator)
@@ -155,13 +194,107 @@ class VideoBallAnalyzer:
         self._contact: ContactPhaseTracker | None = None
         self._last_cy: float | None = None
         self._last_cx: float | None = None
+        self._last_floor_shape: tuple[float, float, float, int] | None = None  
+        self._floor_peak_cy: float = 0.0
 
     @property
     def yolo_active(self) -> bool:
         return self._use_yolo
 
+    def _clean_ball_mask(
+        self, frame: np.ndarray, cx: float, cy: float, radius: float
+    ) -> tuple[np.ndarray | None, int, int]:
+        
+        profile = get_profile(self.ball_type)
+        h, w = frame.shape[:2]
+        pad = int(max(radius * 1.25, 90))
+        x0, y0 = max(0, int(cx - pad)), max(0, int(cy - pad))
+        x1, y1 = min(w, int(cx + pad)), min(h, int(cy + pad))
+        crop = frame[y0:y1, x0:x1]
+        if crop.size == 0:
+            return None, x0, y0
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        lo = profile.hsv_lower.copy()
+        hi = profile.hsv_upper.copy()
+        lo[1] = max(int(lo[1]), 100)
+        lo[2] = max(int(lo[2]), 130)
+        yellow = cv2.inRange(hsv, lo, hi)
+        
+        skin = cv2.inRange(hsv, (0, 25, 50), (25, 160, 255))
+        skin |= cv2.inRange(hsv, (160, 25, 50), (180, 160, 255))
+        yellow = cv2.bitwise_and(yellow, cv2.bitwise_not(skin))
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        yellow = cv2.morphologyEx(yellow, cv2.MORPH_OPEN, k)
+        
+        k_fill = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        yellow = cv2.morphologyEx(yellow, cv2.MORPH_CLOSE, k_fill, iterations=2)
+        return yellow, x0, y0
+
+    def _hand_dent_pct(self, frame: np.ndarray, cx: float, cy: float, radius: float) -> float:
+        
+        mask, x0, y0 = self._clean_ball_mask(frame, cx, cy, radius)
+        if mask is None:
+            return 0.0
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return 0.0
+        cx_l, cy_l = float(cx - x0), float(cy - y0)
+        best, best_score = None, -1e18
+        for c in contours:
+            area = float(cv2.contourArea(c))
+            if area < 800:
+                continue
+            m = cv2.moments(c)
+            if m["m00"] <= 0:
+                continue
+            dist = float(np.hypot(m["m10"] / m["m00"] - cx_l, m["m01"] / m["m00"] - cy_l))
+            if dist > radius * 0.65:
+                continue
+            peri = cv2.arcLength(c, True) + 1e-6
+            circ = 4.0 * np.pi * area / (peri * peri)
+            score = area * circ - dist * 40.0
+            if score > best_score:
+                best_score, best = score, c
+        if best is None:
+            return 0.0
+
+        (ex, ey), R = cv2.minEnclosingCircle(best)
+        if R < 40:
+            return 0.0
+        pts = best.reshape(-1, 2).astype(np.float64)
+        dist = np.sqrt((pts[:, 0] - ex) ** 2 + (pts[:, 1] - ey) ** 2)
+        deficit = np.maximum(0.0, float(R) - dist)
+        score = float(np.percentile(deficit, 60)) / float(R) * 100.0
+        
+        pad = int(max(radius * 1.2, 80))
+        x0b, y0b = max(0, int(cx - pad)), max(0, int(cy - pad))
+        x1b, y1b = min(frame.shape[1], int(cx + pad)), min(frame.shape[0], int(cy + pad))
+        crop = frame[y0b:y1b, x0b:x1b]
+        skin_dent = 0.0
+        if crop.size:
+            hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+            skin = cv2.inRange(hsv, (0, 30, 50), (25, 170, 255))
+            skin |= cv2.inRange(hsv, (160, 30, 50), (180, 170, 255))
+            yy, xx = np.mgrid[0:crop.shape[0], 0:crop.shape[1]]
+            disk = (xx - (cx - x0b)) ** 2 + (yy - (cy - y0b)) ** 2 <= (radius * 0.92) ** 2
+            tot = int(disk.sum())
+            if tot > 200:
+                frac = float(skin[disk].astype(bool).sum()) / float(tot)
+                
+                if frac >= 0.065:
+                    skin_dent = min(32.0, 11.0 + (frac - 0.065) * 160.0)
+
+        
+        shape_dent = 0.0
+        if score >= 9.0:
+            shape_dent = 10.0 + (score - 9.0) * 3.5
+        dent = max(shape_dent, skin_dent)
+        if dent < 11.0:
+            return 0.0
+        return max(0.0, min(35.0, dent))
+
     def _mask_visible_height(self, frame: np.ndarray, cx: float, cy: float, radius: float) -> float | None:
-        profile = COLOR_PROFILES.get(self.ball_type, COLOR_PROFILES["tennis"])
+        profile = get_profile(self.ball_type)
         h, w = frame.shape[:2]
         pad = int(max(radius * 1.15, 90))
         x0, y0 = max(0, int(cx - pad)), max(0, int(cy - pad))
@@ -170,11 +303,7 @@ class VideoBallAnalyzer:
         if crop.size == 0:
             return None
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(
-            hsv,
-            np.array(profile["hsv_lower"], dtype=np.uint8),
-            np.array(profile["hsv_upper"], dtype=np.uint8),
-        )
+        mask = cv2.inRange(hsv, profile.hsv_lower, profile.hsv_upper)
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         mask = cv2.morphologyEx(cv2.morphologyEx(mask, cv2.MORPH_OPEN, k), cv2.MORPH_CLOSE, k)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -193,6 +322,8 @@ class VideoBallAnalyzer:
                 best_d, best = d, c
         if best is None:
             return None
+        if get_profile(self.ball_type).use_convex_hull:
+            best = cv2.convexHull(best)
         pts = best.reshape(-1, 2)
         cy_l = cy - y0
         upper = pts[pts[:, 1] <= cy_l + radius * 0.15]
@@ -209,6 +340,15 @@ class VideoBallAnalyzer:
     def _temporal_guard(self, cx: float, cy: float, hint: RoiHint | None) -> tuple[float, float]:
         if self._frame_h <= 0:
             return cx, cy
+        
+        if (
+            self._last_cy is not None
+            and self._last_cy > self._frame_h * 0.52
+            and cy < self._frame_h * 0.48
+        ):
+            if self._track_hint is not None:
+                return self._track_hint[0], self._track_hint[1]
+            return self._last_cx or cx, self._last_cy
         if self._last_cy is not None and self._last_cy > self._frame_h * 0.58 and cy < self._frame_h * 0.25:
             if hint is not None:
                 return hint.center[0], hint.center[1]
@@ -286,6 +426,8 @@ class VideoBallAnalyzer:
                 score += 8.0
             else:
                 score -= 35.0
+            if self._last_cy > self._frame_h * 0.52 and cy < self._frame_h * 0.48:
+                score -= 80.0
         if cy < 25 or cy > self._frame_h - 25:
             score -= 60.0
         if cx < 20 or cx > self._frame_w - 20:
@@ -370,100 +512,368 @@ class VideoBallAnalyzer:
         except Exception:
             return None, major, minor, ang
 
+    def _yellow_ball_lock(
+        self, frame: np.ndarray
+    ) -> tuple[float, float, float, float] | None:
+        
+        profile = get_profile(self.ball_type)
+        h, w = frame.shape[:2]
+        
+        pads: list[tuple[int, int, int, int]] = []
+        if self._last_cx is not None and self._last_cy is not None:
+            rad = int((self.baseline_vertical_px or 220) * 0.85)
+            x0 = max(0, int(self._last_cx) - rad)
+            y0 = max(0, int(self._last_cy) - rad)
+            x1 = min(w, int(self._last_cx) + rad)
+            y1 = min(h, int(self._last_cy) + rad)
+            pads.append((x0, y0, x1, y1))
+        pads.append((0, 0, w, h))  
+
+        lo = profile.hsv_lower.copy()
+        hi = profile.hsv_upper.copy()
+        lo[1] = max(int(lo[1]), 110)
+        lo[2] = max(int(lo[2]), 140)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        last = (self._last_cx, self._last_cy) if self._last_cx is not None else None
+        min_area = (self.baseline_vertical_px or 200.0) ** 2 * 0.15
+
+        for x0, y0, x1, y1 in pads:
+            crop = frame[y0:y1, x0:x1]
+            if crop.size == 0:
+                continue
+            hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+            mask = cv2.inRange(hsv, lo, hi)
+            skin = cv2.inRange(hsv, (0, 30, 40), (25, 170, 255))
+            skin |= cv2.inRange(hsv, (160, 30, 40), (180, 170, 255))
+            mask = cv2.bitwise_and(mask, cv2.bitwise_not(skin))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_close)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            best = None
+            best_score = -1e18
+            for c in contours:
+                area = float(cv2.contourArea(c))
+                if area < max(900.0, min_area * 0.35):
+                    continue
+                peri = cv2.arcLength(c, True) + 1e-6
+                circ = 4.0 * np.pi * area / (peri * peri)
+                if circ < 0.42:
+                    continue
+                (x, y), (bw, bh), _ang = cv2.minAreaRect(c)
+                x += x0
+                y += y0
+                maj, mnr = max(bw, bh), min(bw, bh)
+                if maj < 40 or mnr < 35:
+                    continue
+                if self.baseline_vertical_px:
+                    if maj > self.baseline_vertical_px * 1.55 or maj < self.baseline_vertical_px * 0.50:
+                        continue
+                    if mnr < self.baseline_vertical_px * 0.42:
+                        continue
+                score = area * circ
+                
+                if self._frame_h > 0 and y > self._frame_h * 0.90:
+                    score -= 8000.0
+                if last is not None:
+                    jump = float(np.hypot(x - last[0], y - last[1]))
+                    if jump > 90:
+                        score -= (jump - 90) * 120.0
+                    else:
+                        score += (90 - jump) * 4.0
+                if score > best_score:
+                    best_score = score
+                    best = (float(x), float(y), float(maj), float(mnr))
+            if best is not None:
+                return best
+        return None
+
     def _from_colour(self, frame: np.ndarray) -> VideoFrameResult | None:
-        hint = self._yolo_hint(frame)
-        picked = self._pick_detection(frame, hint)
+        hand_press_mode = self.bounce_counter is None and self.ball_type.startswith("pickleball")
+        hint = None if hand_press_mode else self._yolo_hint(frame)
+
+        
+        if hand_press_mode:
+            ylock = self._yellow_ball_lock(frame)
+            if ylock is not None:
+                cx, cy, major, minor = ylock
+                if self._last_cx is not None and self._last_cy is not None:
+                    jump = float(np.hypot(cx - self._last_cx, cy - self._last_cy))
+                    if jump > 120:
+                        
+                        cx, cy = self._last_cx, self._last_cy
+                        near = self._colour_at(frame, (cx, cy, max(major, minor) * 0.55))
+                        shape_n = self._extract_shape(near)
+                        if shape_n:
+                            cx, cy, major, minor, angle, _ = shape_n
+                        else:
+                            angle = 0.0
+                    else:
+                        angle = 0.0
+                else:
+                    angle = 0.0
+                bm = self._colour_at(frame, (cx, cy, max(major, minor) * 0.55))
+                
+                if bm.get("detected"):
+                    bcx = float(bm.get("cx") or cx)
+                    bcy = float(bm.get("cy") or cy)
+                    if np.hypot(bcx - cx, bcy - cy) < max(major, minor) * 0.35:
+                        cx, cy = bcx, bcy
+                        major = float(bm.get("major_px") or major)
+                        minor = float(bm.get("minor_px") or minor)
+                picked = (bm, cx, cy, major, minor, angle)
+            else:
+                picked = self._pick_detection(frame, None)
+        else:
+            picked = self._pick_detection(frame, hint)
+
         if picked is None:
             return None
         bm, cx, cy, major, minor, angle = picked
 
-        cx, cy = self._snap_to_yolo(cx, cy, hint)
-        cx, cy = self._temporal_guard(cx, cy, hint)
-        if hint is not None and not self._position_trusted(cx, cy, hint):
-            cx, cy = hint.center
+        if not hand_press_mode:
+            cx, cy = self._snap_to_yolo(cx, cy, hint)
+            prev_cx, prev_cy = cx, cy
+            cx, cy = self._temporal_guard(cx, cy, hint)
+            if (cx, cy) != (prev_cx, prev_cy) and self._track_hint is not None:
+                bm2 = self._colour_at(frame, self._track_hint)
+                shape2 = self._extract_shape(bm2)
+                if shape2:
+                    cx2, cy2, major2, minor2, angle2, _ = shape2
+                    if cy2 > self._frame_h * 0.48 and 25 < cx2 < self._frame_w - 25:
+                        bm, cx, cy, major, minor, angle = bm2, cx2, cy2, major2, minor2, angle2
+                    elif self._last_cx is not None and self._last_cy is not None:
+                        cx, cy = self._last_cx, self._last_cy
+            if cx < 40 or cx > self._frame_w - 40:
+                if self._track_hint is not None:
+                    bm_fix = self._colour_at(frame, self._track_hint)
+                    shape_fix = self._extract_shape(bm_fix)
+                    if shape_fix:
+                        cx_f, cy_f, major_f, minor_f, angle_f, _ = shape_fix
+                        if 40 < cx_f < self._frame_w - 40:
+                            bm, cx, cy, major, minor, angle = bm_fix, cx_f, cy_f, major_f, minor_f, angle_f
+                        else:
+                            cx, cy = self._track_hint[0], self._track_hint[1]
+                    else:
+                        cx, cy = self._track_hint[0], self._track_hint[1]
+                elif self._last_cx is not None and self._last_cy is not None:
+                    cx, cy = self._last_cx, self._last_cy
+            if hint is not None and not self._position_trusted(cx, cy, hint):
+                cx, cy = hint.center
 
-        radius = hint.radius if hint else max(major, minor) * 0.5
+        radius = (hint.radius if hint else max(major, minor) * 0.5)
         if self._contact is None and self._frame_h > 0:
-            self._contact = ContactPhaseTracker(self._frame_h)
+            self._contact = ContactPhaseTracker(self._frame_h, floor_frac=self._floor_frac)
+        on_floor = self._contact.on_floor(cy) if self._contact else False
         in_contact = self._contact.in_contact(cy) if self._contact else False
+        if on_floor:
+            self._floor_peak_cy = max(self._floor_peak_cy, cy)
+        else:
+            self._floor_peak_cy = 0.0
+        
+        rebounding = (
+            on_floor
+            and self._floor_peak_cy > self._frame_h * 0.72
+            and (self._floor_peak_cy - cy) > 40
+        )
+        
+        
+        hand_press_mode = self.bounce_counter is None and self.ball_type.startswith("pickleball")
+        hand_held = hand_press_mode or (
+            self.ball_type.startswith("pickleball") and not on_floor
+        )
+        measure_comp = on_floor or in_contact or hand_held
+
+        colour_major = float(bm.get("major_px") or major)
+        colour_minor = float(bm.get("minor_px") or minor)
+        colour_aspect = colour_major / max(colour_minor, 1.0)
+        colour_roundness = float(bm.get("roundness") or (colour_minor / max(colour_major, 1.0)))
+        live_colour_ok = (
+            self.baseline_vertical_px is not None
+            and colour_major >= self.baseline_vertical_px * 0.70
+            and colour_minor >= self.baseline_vertical_px * 0.55
+            and colour_aspect <= 2.20
+        )
+
+        
+        if measure_comp and self.baseline_vertical_px and not live_colour_ok:
+            recovered = False
+            for roi in (self._track_hint, None):
+                bm_fix = self._colour_at(frame, roi)
+                shape_fix = self._extract_shape(bm_fix)
+                if not shape_fix:
+                    continue
+                cx_f, cy_f, maj_f, min_f, ang_f, _ = shape_fix
+                asp_f = maj_f / max(min_f, 1.0)
+                if (
+                    maj_f >= self.baseline_vertical_px * 0.70
+                    and min_f >= self.baseline_vertical_px * 0.55
+                    and asp_f <= 2.20
+                    and 40 < cx_f < self._frame_w - 40
+                ):
+                    bm, cx, cy, major, minor, angle = bm_fix, cx_f, cy_f, maj_f, min_f, ang_f
+                    colour_major, colour_minor = maj_f, min_f
+                    colour_aspect = asp_f
+                    live_colour_ok = True
+                    on_floor = self._contact.on_floor(cy) if self._contact else on_floor
+                    in_contact = self._contact.in_contact(cy) if self._contact else in_contact
+                    measure_comp = on_floor or in_contact
+                    recovered = True
+                    break
+            held_shape = False
+            if (
+                not recovered
+                and self._last_floor_shape is not None
+                and self._frame_idx - self._last_floor_shape[3] <= 2
+            ):
+                colour_major, colour_minor, angle, _ = self._last_floor_shape
+                major, minor = colour_major, colour_minor
+                colour_aspect = colour_major / max(colour_minor, 1.0)
+                held_shape = True
+                
+        else:
+            held_shape = False
+
+        if held_shape:
+            colour_load = vertical_load_px(colour_major, colour_minor, angle)
+        else:
+            colour_load = float(
+                bm.get("load_axis_px") or vertical_load_px(colour_major, colour_minor, angle)
+            )
 
         edge_pts = None
         if not self._fast:
             edge_pts, major_r, minor_r, angle_r = self._refine_shape(frame, cx, cy, major, minor, angle)
-            if in_contact and minor_r >= max(major, minor) * 0.35:
+            refine_ok = (
+                minor_r >= colour_minor * 0.78
+                and major_r <= max(colour_major, major) * 1.35
+                and (
+                    not self.baseline_vertical_px
+                    or minor_r >= self.baseline_vertical_px * 0.72
+                )
+            )
+            if measure_comp and refine_ok:
                 major, minor, angle = major_r, minor_r, angle_r
 
-        vload = float(bm.get("load_axis_px") or 0.0)
+        vload = colour_load
         if vload <= 0 or (self.baseline_vertical_px and vload >= self.baseline_vertical_px * 0.98):
             vload = visible_height_px(edge_pts, major, minor, angle)
 
-        if in_contact:
-            mask_h = self._mask_visible_height(frame, cx, cy, radius)
-            if mask_h is not None:
-                vload = min(vload, mask_h)
-            if (
-                not self._fast
-                and self.baseline_vertical_px
-                and vload >= self.baseline_vertical_px * 0.90
-            ):
-                ts = self._frame_idx / max(self._fps, 1.0)
-                det = self.detector.detect(frame, ts)
-                if det is not None:
-                    dc = det.center_px
-                    if np.hypot(dc[0] - cx, dc[1] - cy) <= radius * 0.9:
-                        det_v = vertical_load_px(
-                            det.major_px or det.major_mm / max(self._px_per_mm or 1, 1e-6),
-                            det.minor_px or det.minor_mm / max(self._px_per_mm or 1, 1e-6),
-                            det.angle,
-                        )
-                        if det_v > 20:
-                            vload = min(vload, det_v)
-                        if det.refined_edge_points is not None and len(det.refined_edge_points) >= 8:
-                            edge_pts = det.refined_edge_points
-            if bm.get("detected") and bm.get("minor_px"):
-                colour_minor = float(bm["minor_px"])
-                if colour_minor < vload:
-                    vload = colour_minor
-            if self.baseline_vertical_px:
-                major = self.baseline_vertical_px
-                minor = max(40.0, min(minor, vload))
-                angle = 0.0
-        elif self.baseline_vertical_px:
-            major = minor = self.baseline_vertical_px
-            angle = 0.0
-            vload = self.baseline_vertical_px
-            edge_pts = None
+        aspect_gate = COMP_ASPECT_STRONG if rebounding else COMP_ASPECT_MIN
+        roundness_max = COMP_ROUNDNESS_MAX
+        report_min = COMP_REPORT_MIN_PCT
+        
+        display_major = colour_major if colour_major > 20 else (self.baseline_vertical_px or major)
+        display_minor = colour_minor if colour_minor > 20 else display_major
+        display_angle = angle
 
+        size_ok_colour = (
+            self.baseline_vertical_px is not None
+            and colour_major >= self.baseline_vertical_px * 0.70
+            and colour_minor >= self.baseline_vertical_px * 0.55
+        )
+        
+        
+        clearly_squashed = (
+            (not hand_held)
+            and measure_comp
+            and size_ok_colour
+            and colour_aspect >= aspect_gate
+            and colour_roundness <= roundness_max
+        )
+
+        if clearly_squashed and self.baseline_vertical_px:
+            aspect_vload = self.baseline_vertical_px * (colour_minor / colour_major)
+            candidates = [vload]
+            if aspect_vload < self.baseline_vertical_px:
+                candidates.append(aspect_vload)
+            if colour_minor < self.baseline_vertical_px * 0.95:
+                candidates.append(colour_minor)
+            vload = min(candidates) if colour_aspect < 1.45 else float(np.median(candidates))
+            mask_h = self._mask_visible_height(frame, cx, cy, radius)
+            if (
+                mask_h is not None
+                and self.baseline_vertical_px * 0.58 <= mask_h < self.baseline_vertical_px * 0.95
+            ):
+                vload = min(vload, mask_h)
+            vload = max(vload, self.baseline_vertical_px * 0.58)
+            
+            display_major = max(colour_major, self.baseline_vertical_px)
+            display_minor = max(40.0, min(colour_minor, vload))
+            display_angle = 0.0
+            if live_colour_ok:
+                self._last_floor_shape = (colour_major, colour_minor, 0.0, self._frame_idx)
+        elif self.baseline_vertical_px:
+            vload = self.baseline_vertical_px
+            if size_ok_colour:
+                
+                display_major = colour_major
+                display_minor = colour_minor
+                display_angle = angle
+            else:
+                display_major = display_minor = self.baseline_vertical_px
+                display_angle = 0.0
+
+        major, minor, angle = display_major, display_minor, display_angle
         rnd = minor / max(major, 1.0)
         ecc = float(np.sqrt(max(0.0, 1.0 - rnd * rnd)))
 
         trusted = self._position_trusted(cx, cy, hint)
         size_ok = (
             self.baseline_vertical_px is None
-            or (0.55 * self.baseline_vertical_px <= vload <= 1.20 * self.baseline_vertical_px)
-            or in_contact
+            or size_ok_colour
+            or (0.55 * self.baseline_vertical_px <= max(major, minor) <= 1.35 * self.baseline_vertical_px)
+            or measure_comp
         )
         trusted = trusted and size_ok
 
         raw_comp = 0.0
-        if self.baseline_vertical_px and self.baseline_vertical_px > 0 and in_contact and trusted:
+        if self.baseline_vertical_px and self.baseline_vertical_px > 0 and clearly_squashed and trusted:
             raw_comp = max(0.0, (self.baseline_vertical_px - vload) / self.baseline_vertical_px * 100.0)
             if raw_comp > 42.0:
                 raw_comp = 40.0
-            if raw_comp > 5.0 and ecc < 0.45:
+            if raw_comp < report_min:
                 raw_comp = 0.0
-                minor = major = self.baseline_vertical_px
-                vload = self.baseline_vertical_px
+        if raw_comp == 0.0 and self.baseline_vertical_px:
+            vload = self.baseline_vertical_px
+            ecc = float(np.sqrt(max(0.0, 1.0 - (display_minor / max(display_major, 1.0)) ** 2)))
 
-        dia_mm = vload / self._px_per_mm if self._px_per_mm else self.known_mm
-        if trusted:
-            self._track_hint = (cx, cy, max(major, minor) * 0.5)
+        
+        if hand_held and trusted and self.baseline_vertical_px:
+            dent = self._hand_dent_pct(frame, cx, cy, self.baseline_vertical_px * 0.5)
+            if dent >= 12.0:
+                raw_comp = dent
+                vload = self.baseline_vertical_px * (1.0 - raw_comp / 100.0)
+                display_major = self.baseline_vertical_px
+                display_minor = max(40.0, vload)
+                display_angle = 0.0
+                major, minor = display_major, display_minor
+                ecc = float(np.sqrt(max(0.0, 1.0 - (minor / max(major, 1.0)) ** 2)))
+            else:
+                raw_comp = 0.0
+                vload = self.baseline_vertical_px
+                display_major = display_minor = (
+                    colour_major if size_ok_colour else self.baseline_vertical_px
+                )
+                if size_ok_colour:
+                    display_minor = colour_minor
+                display_angle = 0.0 if not size_ok_colour else angle
+                major, minor = display_major, display_minor
+                ecc = float(np.sqrt(max(0.0, 1.0 - (minor / max(major, 1.0)) ** 2)))
+
+        
+        if raw_comp > 0 and self._px_per_mm:
+            dia_mm = vload / self._px_per_mm
+        else:
+            dia_mm = self.known_mm
+        if trusted and 40 < cx < self._frame_w - 40:
+            self._track_hint = (cx, cy, max(display_major, display_minor) * 0.5)
 
         return VideoFrameResult(
             detected=bool(bm.get("detected")) and trusted,
-            status="compressing" if raw_comp > 8 else ("tracking" if trusted else "partial"),
+            status="compressing" if raw_comp >= IMPACT_STATUS_MIN_PCT else ("tracking" if trusted else "partial"),
             cx=cx, cy=cy,
-            major_px=major, minor_px=minor, angle=angle,
+            major_px=display_major, minor_px=display_minor, angle=display_angle,
             vertical_load_px=vload,
             diameter_mm=dia_mm if trusted else self.known_mm,
             compression_pct=raw_comp,
@@ -474,7 +884,7 @@ class VideoBallAnalyzer:
             baseline_mm=self.known_mm if self.baseline_locked else None,
             edge_points=edge_pts,
             yolo_active=self._use_yolo,
-            ellipse={"cx": cx, "cy": cy, "a": major / 2, "b": minor / 2, "angle": angle},
+            ellipse={"cx": cx, "cy": cy, "a": display_major / 2, "b": display_minor / 2, "angle": display_angle},
         )
 
     def lock_baseline_from_video(self, video_path: str) -> bool:
@@ -492,8 +902,8 @@ class VideoBallAnalyzer:
         self._px_per_mm = ppm
         self.calibrator.pixels_per_mm = ppm
         self.baseline_locked = True
-        self.bounce_counter = BounceCounter(self._frame_h, self._fps)
-        self._contact = ContactPhaseTracker(self._frame_h)
+        self.bounce_counter = BounceCounter(self._frame_h, self._fps, floor_frac=self._floor_frac)
+        self._contact = ContactPhaseTracker(self._frame_h, floor_frac=self._floor_frac)
         logger.info("Baseline locked: %.1f px (%.3f px/mm)", bpx, ppm)
         return True
 
@@ -501,9 +911,9 @@ class VideoBallAnalyzer:
         if self._frame_h == 0:
             self._frame_h, self._frame_w = frame.shape[:2]
             if self.bounce_counter is None:
-                self.bounce_counter = BounceCounter(self._frame_h, self._fps)
+                self.bounce_counter = BounceCounter(self._frame_h, self._fps, floor_frac=self._floor_frac)
             if self._contact is None:
-                self._contact = ContactPhaseTracker(self._frame_h)
+                self._contact = ContactPhaseTracker(self._frame_h, floor_frac=self._floor_frac)
 
         r = self._from_colour(frame)
         if r is None:
@@ -516,17 +926,21 @@ class VideoBallAnalyzer:
                 yolo_active=self._use_yolo,
             )
 
-        hint = self._yolo_hint(frame)
-        track_cy = r.cy
-        if hint is not None and r.cy < self._frame_h * 0.45 and hint.center[1] > self._frame_h * 0.55:
-            track_cy = hint.center[1]
-        reliable = r.confidence >= 0.65 and track_cy > self._frame_h * FLOOR_CONTACT_Y_FRAC
+        hand_press_mode = self.bounce_counter is None and self.ball_type.startswith("pickleball")
         if self.bounce_counter and r.major_px > 10:
+            hint = self._yolo_hint(frame)
+            track_cy = r.cy
+            if hint is not None and r.cy < self._frame_h * 0.45 and hint.center[1] > self._frame_h * 0.55:
+                track_cy = hint.center[1]
+            reliable = r.confidence >= 0.65 and track_cy > self._frame_h * self._floor_frac
             self.bounce_counter.update(self._frame_idx, track_cy, reliable=reliable)
 
-        if r.major_px > 10 and r.confidence >= 0.65 and r.diameter_mm > self.known_mm * 0.45:
-            self._last_cy = r.cy
-            self._last_cx = r.cx
+        if r.major_px > 10 and r.cx > 0 and (
+            hand_press_mode or (r.confidence >= 0.65 and r.diameter_mm > self.known_mm * 0.45)
+        ):
+            if 25 < r.cx < self._frame_w - 25 and 25 < r.cy < self._frame_h - 25:
+                self._last_cy = r.cy
+                self._last_cx = r.cx
 
         self._frame_idx += 1
         return r

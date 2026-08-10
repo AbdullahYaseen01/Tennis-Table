@@ -1,4 +1,3 @@
-"""Benchmark measurement accuracy on sample video or file."""
 from __future__ import annotations
 
 import sys
@@ -13,7 +12,6 @@ from app.config import REFERENCE_DIAMETERS_MM, SAMPLES_DIR
 from app.vision.calibration import Calibrator
 from app.vision.camera import FrameSource
 from app.vision.detect import BallDetector
-
 
 def benchmark_video(path: Path, ball_type: str = "tennis", n_frames: int = 90) -> dict:
     cal = Calibrator()
@@ -41,12 +39,12 @@ def benchmark_video(path: Path, ball_type: str = "tennis", n_frames: int = 90) -
 
     src.release()
 
-    # Auto-calibrate scale from median pixel diameter if not calibrated
+    
     if not cal.is_ready() or cal.pixels_per_mm is None:
         d_px = det.measure_median_diameter_px(frames_collected[:60], axis="minor")
         if d_px:
             cal.calibrate_scale_from_ball_diameter(d_px, known_mm)
-            # Re-run detection with correct scale
+            
             minors, majors, confs = [], [], []
             src2 = FrameSource(str(path))
             for _ in range(n_frames):
@@ -63,7 +61,7 @@ def benchmark_video(path: Path, ball_type: str = "tennis", n_frames: int = 90) -
     if len(minors) < 10:
         return {"error": "Insufficient detections", "detections": len(minors)}
 
-    # Resting frames only (first ~2 s at 30 fps)
+    
     rest_n = min(60, len(minors))
     rest_minors = minors[:rest_n]
     rest_arr = np.array(rest_minors)
@@ -100,7 +98,6 @@ def benchmark_video(path: Path, ball_type: str = "tennis", n_frames: int = 90) -
         "scale_px_per_mm": cal.pixels_per_mm,
     }
 
-
 def main() -> int:
     video = SAMPLES_DIR / "sample_test.mp4"
     if len(sys.argv) > 1:
@@ -127,7 +124,6 @@ def main() -> int:
     ok = abs(result["rest_error_pct"]) < 2.0 and result["rest_jitter_pct"] < 1.5
     print("PASS" if ok else "DONE (check calibration for your video)")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

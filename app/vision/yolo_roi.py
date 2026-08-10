@@ -1,4 +1,3 @@
-"""Optional YOLO sports-ball detector for coarse ROI seeding only."""
 from __future__ import annotations
 
 import logging
@@ -10,9 +9,7 @@ from app.config import YOLO_CONFIDENCE, YOLO_ENABLED, YOLO_MODEL
 
 logger = logging.getLogger(__name__)
 
-# COCO class index for "sports ball"
 SPORTS_BALL_CLASS = 32
-
 
 @dataclass
 class RoiHint:
@@ -20,12 +17,8 @@ class RoiHint:
     radius: float
     confidence: float
 
-
 class YoloRoiSeeder:
-    """
-    Optional ultralytics YOLO — locates sports ball for ROI only.
-    Precise measurement remains classical CV (sub-pixel ellipse).
-    """
+    
 
     def __init__(self) -> None:
         self._model = None
@@ -68,7 +61,7 @@ class YoloRoiSeeder:
 
         boxes = results[0].boxes
         confs = boxes.conf.cpu().numpy()
-        # Prefer sports ball class when present
+        
         cls = boxes.cls.cpu().numpy().astype(int)
         sports = np.where(cls == SPORTS_BALL_CLASS)[0]
         if len(sports) > 0:

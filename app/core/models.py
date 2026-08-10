@@ -1,4 +1,3 @@
-"""Dataclasses for measurements and test runs."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +5,6 @@ from enum import Enum
 from typing import Any
 
 import numpy as np
-
 
 class TestState(str, Enum):
     IDLE = "IDLE"
@@ -16,7 +14,6 @@ class TestState(str, Enum):
     RECOVERING = "RECOVERING"
     DONE = "DONE"
     SURFACE_SCAN = "SURFACE_SCAN"
-
 
 @dataclass
 class BallMeasurement:
@@ -32,7 +29,6 @@ class BallMeasurement:
     minor_px: float = 0.0
     contour: np.ndarray | None = None
 
-
 @dataclass
 class CompressionSample:
     timestamp: float
@@ -40,7 +36,6 @@ class CompressionSample:
     bulge_mm: float
     diameter_mm: float
     phase: str = ""
-
 
 @dataclass
 class RecoveryResult:
@@ -52,7 +47,6 @@ class RecoveryResult:
     fitted_curve: tuple[np.ndarray, np.ndarray] | None = None
     raw_points: list[tuple[float, float]] = field(default_factory=list)
 
-
 @dataclass
 class ZoneResult:
     zone_index: int
@@ -62,13 +56,11 @@ class ZoneResult:
     shape_score: float = 0.0
     texture_score: float = 0.0
 
-
 @dataclass
 class SurfaceAnalysisResult:
     zones: list[ZoneResult]
-    mode: str  # "single_view" or "rotate_capture"
+    mode: str  
     crack_detected: bool = False
-
 
 @dataclass
 class ValidationResult:
@@ -76,7 +68,6 @@ class ValidationResult:
     known_mm: float
     error_mm: float
     error_pct: float
-
 
 @dataclass
 class TestRunSummary:

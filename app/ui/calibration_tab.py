@@ -1,4 +1,3 @@
-"""Calibration workflow UI."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,9 +34,8 @@ from app.vision.calibration import Calibrator
 from app.vision.camera import FrameSource
 from app.vision.detect import BallDetector
 
-
 class CalibrationTab(QWidget):
-    """Intrinsics, scale, and validation calibration workflow."""
+    
 
     calibration_updated = Signal()
 
@@ -55,7 +53,7 @@ class CalibrationTab(QWidget):
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
 
-        # Video preview
+        
         left = QVBoxLayout()
         self.preview_label = QLabel("Open a video source to begin calibration")
         self.preview_label.setMinimumSize(640, 480)
@@ -78,10 +76,10 @@ class CalibrationTab(QWidget):
         left.addLayout(src_row)
         layout.addLayout(left, stretch=2)
 
-        # Controls
+        
         right = QVBoxLayout()
 
-        # 2a Intrinsics
+        
         intrinsics_box = QGroupBox("2a. Lens Intrinsics (Checkerboard)")
         intrinsics_layout = QVBoxLayout(intrinsics_box)
         intrinsics_layout.addWidget(
@@ -107,7 +105,7 @@ class CalibrationTab(QWidget):
         intrinsics_layout.addWidget(self.intrinsic_status)
         right.addWidget(intrinsics_box)
 
-        # 2b Scale
+        
         scale_box = QGroupBox("2b. Real-World Scale (same plane as ball)")
         scale_layout = QVBoxLayout(scale_box)
         scale_layout.addWidget(
@@ -138,7 +136,7 @@ class CalibrationTab(QWidget):
         scale_layout.addWidget(self.scale_status)
         right.addWidget(scale_box)
 
-        # 2c Validation
+        
         val_box = QGroupBox("2c. Accuracy Validation")
         val_layout = QFormLayout(val_box)
         self.known_diameter_spin = QDoubleSpinBox()
@@ -330,6 +328,6 @@ class CalibrationTab(QWidget):
                 f"Error: {val.error_mm:+.2f} mm ({val.error_pct:+.2f}%)"
             )
 
-    def closeEvent(self, event) -> None:  # noqa: N802
+    def closeEvent(self, event) -> None:  
         self._close_source()
         super().closeEvent(event)

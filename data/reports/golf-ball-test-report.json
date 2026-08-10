@@ -1,9 +1,0 @@
-{
-  "video": "Golf Ball.mp4",
-  "output_video": "Golf-Ball-TRACKED.mp4",
-  "baseline_mm": 67.0,
-  "max_compression_pct": 46.5,
-  "bounce_count": 1,
-  "frames": 235,
-  "notes": "White golf ball on dark background; white-ball detection used."
-}

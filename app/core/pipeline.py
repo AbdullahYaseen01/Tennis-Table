@@ -1,4 +1,3 @@
-"""Per-frame orchestration and test state machine."""
 from __future__ import annotations
 
 import logging
@@ -29,9 +28,8 @@ from app.vision.surface import SurfaceAnalyzer
 
 logger = logging.getLogger(__name__)
 
-
 class TestPipeline:
-    """Orchestrates detection, compression, recovery, and surface analysis."""
+    
 
     def __init__(self, calibrator: Calibrator) -> None:
         self.calibrator = calibrator
@@ -176,12 +174,12 @@ class TestPipeline:
                         self._finish_recovery()
 
         elif self.state == TestState.SURFACE_SCAN:
-            pass  # Surface captures handled separately
+            pass  
 
         return measurement, compression_sample
 
     def _auto_calibrate_scale_from_baseline(self) -> None:
-        """Set px/mm from baseline pixel size + known ball specification."""
+        
         minor_px = self.compression.baseline_median_minor_px
         if minor_px is None or minor_px <= 0:
             return

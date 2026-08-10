@@ -1,4 +1,3 @@
-"""Run all verification checks."""
 from __future__ import annotations
 
 import subprocess
@@ -6,7 +5,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-
 
 def main() -> int:
     scripts = [
@@ -25,7 +23,6 @@ def main() -> int:
             print(f"PASSED: {name}")
     print(f"\n{len(scripts) - failed}/{len(scripts)} checks passed")
     return 1 if failed else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

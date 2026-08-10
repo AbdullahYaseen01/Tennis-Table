@@ -1,4 +1,3 @@
-"""Job store for video processing — in-memory locally, disk-backed on Vercel."""
 from __future__ import annotations
 
 import json
@@ -15,13 +14,11 @@ from app.config import IS_VERCEL
 
 _JOBS_ROOT = Path("/tmp/data/jobs") if IS_VERCEL else None
 
-
 class JobStatus(str, Enum):
     QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
-
 
 @dataclass
 class Job:
@@ -47,7 +44,6 @@ class Job:
             "results": self.results,
             "download_ready": self.status == JobStatus.COMPLETED and self.output_path is not None,
         }
-
 
 class JobStore:
     def __init__(self) -> None:
@@ -135,6 +131,5 @@ class JobStore:
                 setattr(job, key, value)
             self._jobs[job_id] = job
             self._persist(job)
-
 
 job_store = JobStore()

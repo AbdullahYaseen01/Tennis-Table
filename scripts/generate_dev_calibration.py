@@ -1,4 +1,3 @@
-"""Generate dev calibration files matching the synthetic sample video."""
 from __future__ import annotations
 
 import sys
@@ -18,7 +17,6 @@ from app.vision.detect import BallDetector
 CALIB_DIR = ROOT / "data" / "calib"
 VIDEO = SAMPLES_DIR / "sample_test.mp4"
 KNOWN_MM = REFERENCE_DIAMETERS_MM["tennis"]
-
 
 def main() -> None:
     CALIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,7 +46,7 @@ def main() -> None:
         image_size=np.array([w, h]),
     )
 
-    # Measure actual pixel diameter from enhanced detector (rest frames)
+    
     cal = Calibrator()
     cal.camera_matrix = camera_matrix
     cal.dist_coeffs = dist_coeffs
@@ -67,7 +65,7 @@ def main() -> None:
 
     d_px = det.measure_median_diameter_px(frames, axis="minor")
     if d_px is None:
-        d_px = (120 * 2)  # fallback
+        d_px = (120 * 2)  
     ppm = d_px / KNOWN_MM
 
     cal.save_scale(ppm)
@@ -76,7 +74,6 @@ def main() -> None:
     print(f"Dev calibration written to {CALIB_DIR}")
     print(f"Measured diameter: {d_px:.2f} px -> {ppm:.3f} px/mm")
     print(f"Reference ball: {KNOWN_MM} mm, validation error: {val.error_pct:.4f}%")
-
 
 if __name__ == "__main__":
     main()

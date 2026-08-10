@@ -1,4 +1,3 @@
-"""Live video tab with real-time measurement and test controls."""
 from __future__ import annotations
 
 import logging
@@ -32,11 +31,10 @@ from app.vision.camera import FrameSource
 
 logger = logging.getLogger(__name__)
 
-
 class VisionWorker(QThread):
-    """Read frames and run vision pipeline off the UI thread."""
+    
 
-    frame_ready = Signal(object, object, object)  # overlay frame, measurement, compression
+    frame_ready = Signal(object, object, object)  
     error = Signal(str)
 
     def __init__(self, pipeline: TestPipeline, source: FrameSource) -> None:
@@ -67,7 +65,7 @@ class VisionWorker(QThread):
             measurement, compression = self.pipeline.process_frame(frame, ts)
             overlay = self.pipeline.detector.draw_overlay(frame, measurement)
 
-            # State overlay
+            
             state = self.pipeline.state.value
             comp_pct = compression.compression_pct if compression else self.pipeline.compression.live_compression_pct()
             cv2.putText(
@@ -83,9 +81,8 @@ class VisionWorker(QThread):
             self.frame_ready.emit(overlay, measurement, compression)
             self.msleep(1)
 
-
 class LiveTab(QWidget):
-    """Camera view + real-time measurement + test state machine controls."""
+    
 
     run_saved = Signal(int)
 
@@ -118,7 +115,7 @@ class LiveTab(QWidget):
         layout = QVBoxLayout(self)
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Left: video + controls
+        
         left = QVBoxLayout()
         left_widget = QWidget()
         left_widget.setLayout(left)
@@ -178,7 +175,7 @@ class LiveTab(QWidget):
 
         splitter.addWidget(left_widget)
 
-        # Right: plots
+        
         plots_widget = QWidget()
         plots_layout = QVBoxLayout(plots_widget)
         pg.setConfigOptions(antialias=True)
@@ -314,7 +311,7 @@ class LiveTab(QWidget):
             QMessageBox.warning(self, "Surface", "No ball detected.")
             return
         self.pipeline.start_surface_scan()
-        # Single-view mode for quick scan; rotate mode via repeated captures
+        
         if self.source and self.worker:
             ok, frame, _ = self.source.read()
             if ok and frame is not None:
@@ -377,6 +374,6 @@ class LiveTab(QWidget):
             f"Scale auto-calibrated from baseline (accuracy {error_pct:+.2f}% vs known ball spec)."
         )
 
-    def closeEvent(self, event) -> None:  # noqa: N802
+    def closeEvent(self, event) -> None:  
         self._stop_worker()
         super().closeEvent(event)

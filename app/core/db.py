@@ -1,4 +1,3 @@
-"""SQLite storage layer for test runs — optimized queries and indexes."""
 from __future__ import annotations
 
 import sqlite3
@@ -9,12 +8,10 @@ from typing import Any
 from app.config import DB_PATH
 from app.core.models import CompressionSample, TestRunSummary, ZoneResult
 
-# Max points sent to dashboard charts (decimation keeps visuals smooth + fast)
 DASHBOARD_MAX_CHART_POINTS = 500
 
-
 class RunDatabase:
-    """Persist and query test run data."""
+    
 
     def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or DB_PATH
@@ -152,7 +149,7 @@ class RunDatabase:
         points: list[dict[str, Any]],
         max_points: int = DASHBOARD_MAX_CHART_POINTS,
     ) -> list[dict[str, Any]]:
-        """Reduce timeseries length for fast chart rendering."""
+        
         n = len(points)
         if n <= max_points:
             return points

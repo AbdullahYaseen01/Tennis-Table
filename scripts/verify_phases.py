@@ -1,4 +1,3 @@
-"""Verify acceptance criteria for all phases."""
 from __future__ import annotations
 
 import sys
@@ -21,7 +20,6 @@ from app.vision.detect import BallDetector
 from app.vision.recovery import RecoveryAnalyzer
 from app.vision.surface import SurfaceAnalyzer
 
-
 def test_phase1() -> bool:
     print("Phase 1: FrameSource...")
     video = SAMPLES_DIR / "sample_test.mp4"
@@ -34,7 +32,6 @@ def test_phase1() -> bool:
     print("  PASS: file source returns (ok, frame, timestamp)")
     return True
 
-
 def test_phase2() -> bool:
     print("Phase 2: Calibration...")
     cal = Calibrator()
@@ -44,7 +41,6 @@ def test_phase2() -> bool:
     print(f"  Validation error: {val.error_pct:.4f}%")
     print("  PASS: calibration loaded with validation")
     return True
-
 
 def test_phase3() -> bool:
     print("Phase 3: Ball detection...")
@@ -66,7 +62,6 @@ def test_phase3() -> bool:
     assert std < 2.0, f"Diameter jitter too high: {std}"
     print("  PASS: ellipse tracking stable")
     return True
-
 
 def test_phase4_5() -> bool:
     print("Phase 4-5: Compression & recovery...")
@@ -106,7 +101,6 @@ def test_phase4_5() -> bool:
     print("  PASS: compression and recovery")
     return True
 
-
 def test_phase6() -> bool:
     print("Phase 6: Surface analysis...")
     cal = Calibrator()
@@ -126,7 +120,6 @@ def test_phase6() -> bool:
     assert len(flagged) > 0, "Should flag worn zone"
     print("  PASS: surface zone outlier detection")
     return True
-
 
 def test_phase7() -> bool:
     print("Phase 7: Database...")
@@ -157,7 +150,6 @@ def test_phase7() -> bool:
     print("  PASS: database storage")
     return True
 
-
 def main() -> int:
     tests = [test_phase1, test_phase2, test_phase3, test_phase4_5, test_phase6, test_phase7]
     passed = 0
@@ -169,7 +161,6 @@ def main() -> int:
             print(f"  FAIL: {exc}")
     print(f"\n{passed}/{len(tests)} phase tests passed")
     return 0 if passed == len(tests) else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
