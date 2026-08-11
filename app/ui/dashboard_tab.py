@@ -188,8 +188,8 @@ class DashboardTab(QWidget):
         frame = QFrame()
         frame.setObjectName("statChip")
         frame.setStyleSheet(
-            
-            
+            "QFrame#statChip { background: #1a2332; border: 1px solid rgba(255,255,255,0.08); "
+            "border-radius: 8px; }"
         )
         lay = QVBoxLayout(frame)
         lay.setSpacing(2)
