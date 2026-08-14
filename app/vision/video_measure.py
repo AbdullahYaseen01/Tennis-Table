@@ -207,6 +207,8 @@ class VideoBallAnalyzer:
         
         profile = get_profile(self.ball_type)
         h, w = frame.shape[:2]
+        if not (np.isfinite(cx) and np.isfinite(cy) and np.isfinite(radius)):
+            return None, 0, 0
         pad = int(max(radius * 1.25, 90))
         x0, y0 = max(0, int(cx - pad)), max(0, int(cy - pad))
         x1, y1 = min(w, int(cx + pad)), min(h, int(cy + pad))
@@ -520,8 +522,16 @@ class VideoBallAnalyzer:
         h, w = frame.shape[:2]
         
         pads: list[tuple[int, int, int, int]] = []
-        if self._last_cx is not None and self._last_cy is not None:
-            rad = int((self.baseline_vertical_px or 220) * 0.85)
+        if (
+            self._last_cx is not None
+            and self._last_cy is not None
+            and np.isfinite(self._last_cx)
+            and np.isfinite(self._last_cy)
+        ):
+            bpx = self.baseline_vertical_px
+            if bpx is None or not np.isfinite(bpx) or bpx < 20:
+                bpx = 220.0
+            rad = int(bpx * 0.85)
             x0 = max(0, int(self._last_cx) - rad)
             y0 = max(0, int(self._last_cy) - rad)
             x1 = min(w, int(self._last_cx) + rad)
@@ -536,7 +546,10 @@ class VideoBallAnalyzer:
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
         last = (self._last_cx, self._last_cy) if self._last_cx is not None else None
-        min_area = (self.baseline_vertical_px or 200.0) ** 2 * 0.15
+        area_base = self.baseline_vertical_px
+        if area_base is None or not np.isfinite(area_base) or area_base < 20:
+            area_base = 200.0
+        min_area = area_base ** 2 * 0.15
 
         for x0, y0, x1, y1 in pads:
             crop = frame[y0:y1, x0:x1]
@@ -938,7 +951,12 @@ class VideoBallAnalyzer:
         if r.major_px > 10 and r.cx > 0 and (
             hand_press_mode or (r.confidence >= 0.65 and r.diameter_mm > self.known_mm * 0.45)
         ):
-            if 25 < r.cx < self._frame_w - 25 and 25 < r.cy < self._frame_h - 25:
+            if (
+                np.isfinite(r.cx)
+                and np.isfinite(r.cy)
+                and 25 < r.cx < self._frame_w - 25
+                and 25 < r.cy < self._frame_h - 25
+            ):
                 self._last_cy = r.cy
                 self._last_cx = r.cx
 

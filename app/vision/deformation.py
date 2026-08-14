@@ -306,4 +306,6 @@ def deformed_contour_points(res: DeformationResult) -> np.ndarray | None:
     r = res.radii[idx]
     xs = res.cx + r * np.cos(ang)
     ys = res.cy + r * np.sin(ang)
-    return np.stack([xs, ys], axis=1).astype(np.int32)
+    pts = np.stack([xs, ys], axis=1)
+    pts = np.nan_to_num(pts, nan=0.0, posinf=0.0, neginf=0.0)
+    return pts.astype(np.int32)

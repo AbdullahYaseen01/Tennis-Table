@@ -48,7 +48,17 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "tennis-ball-tester"}
+    commit = (
+        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        or os.environ.get("RAILWAY_GIT_COMMIT")
+        or ""
+    )
+    return {
+        "ok": True,
+        "service": "tennis-ball-tester",
+        "commit": commit[:12],
+        "nan_guard": True,
+    }
 
 @app.get("/api")
 def api_info():

@@ -205,17 +205,20 @@ def draw_measurement(
     has_shape = r.major_px > 10 and r.cx > 0 and r.cy > 0
     if not has_shape:
         return
-    cx, cy = int(r.cx), int(r.cy)
+    if not (np.isfinite(r.cx) and np.isfinite(r.cy) and np.isfinite(r.major_px) and np.isfinite(r.minor_px)):
+        return
+    cx, cy = _ival(r.cx), _ival(r.cy)
     if cy < 15 or cy > frame_h - 15:
         return
 
-    rx = max(1, int(r.major_px / 2))
-    ry = max(1, int(r.minor_px / 2))
+    rx = max(1, _ival(r.major_px / 2, 1))
+    ry = max(1, _ival(r.minor_px / 2, 1))
     
     if hand_press:
         if r.compression_pct >= IMPACT_STATUS_MIN_PCT:
             cv2.circle(frame, (cx, cy), baseline_radius, (255, 180, 0), 2, cv2.LINE_AA)
-        live_r = max(8, int(baseline_radius * (1.0 - min(r.compression_pct, 40.0) / 100.0)))
+        live_scale = r.compression_pct if np.isfinite(r.compression_pct) else 0.0
+        live_r = max(8, int(baseline_radius * (1.0 - min(live_scale, 40.0) / 100.0)))
         cv2.ellipse(frame, (cx, cy), (baseline_radius, live_r), 0, 0, 360, (0, 255, 0), 3, cv2.LINE_AA)
         cv2.drawMarker(frame, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 20, 2)
     else:

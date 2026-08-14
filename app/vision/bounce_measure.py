@@ -638,10 +638,15 @@ class CompressionSmoother:
         self.max_raw = 0.0
 
     def update(self, raw_pct: float) -> float:
-        self._hist.append(raw_pct)
-        self.max_raw = max(self.max_raw, raw_pct)
+        raw = float(raw_pct)
+        if not np.isfinite(raw):
+            raw = 0.0
+        self._hist.append(raw)
+        self.max_raw = max(self.max_raw, raw)
         smoothed = float(np.median(self._hist))
-        self.max_compression = max(self.max_compression, smoothed, raw_pct)
+        if not np.isfinite(smoothed):
+            smoothed = 0.0
+        self.max_compression = max(self.max_compression, smoothed, raw)
         return smoothed
 
     def reset(self) -> None:
