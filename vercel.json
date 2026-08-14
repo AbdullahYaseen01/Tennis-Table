@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
   "installCommand": "pip install -r requirements.txt",
   "rewrites": [
     {
@@ -8,10 +9,10 @@
     }
   ],
   "functions": {
-    "api/**/*.py": {
+    "api/index.py": {
       "maxDuration": 60,
       "memory": 3008,
-      "excludeFiles": "{.venv/**,venv/**,data/samples/**,data/reports/**,data/uploads/**,data/outputs/**,app/ui/**,app/main.py,scripts/test_*.py,scripts/generate_*.py,scripts/debug_*.py,scripts/analyze_*.py,requirements-local.txt,yolov8n.pt,**/*.mp4,**/*.avi,**/*.pdf,**/*.pt,**/*.jpg}"
+      "excludeFiles": "{.venv/**,venv/**,data/**,app/ui/**,app/main.py,scripts/test_*.py,scripts/generate_*.py,scripts/debug_*.py,scripts/analyze_*.py,scripts/train_*.py,requirements-local.txt,Dockerfile,render.yaml,railway.toml,**/*.mp4,**/*.avi,**/*.pdf,**/*.pt,**/*.jpg,**/*.png}"
     }
   },
   "env": {

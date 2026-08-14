@@ -25,7 +25,31 @@ from app.vision.video_measure import (
     IMPACT_STATUS_MIN_PCT,
 )
 
-VERCEL_MAX_EDGE = 960
+VERCEL_MAX_EDGE = 720
+
+def _lock_press_baseline(video_path: Path, ball_type: str, known_mm: float) -> tuple[float, float] | None:
+    cap = cv2.VideoCapture(str(video_path))
+    radii: list[float] = []
+    any_r: list[float] = []
+    for _ in range(18):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if max(frame.shape[0], frame.shape[1]) > VERCEL_MAX_EDGE:
+            s = VERCEL_MAX_EDGE / max(frame.shape[0], frame.shape[1])
+            frame = cv2.resize(frame, (int(frame.shape[1] * s), int(frame.shape[0] * s)), interpolation=cv2.INTER_AREA)
+        res = analyze_deformation(frame, ball_type, require_skin=True)
+        if res.valid and res.r_baseline > 20:
+            any_r.append(res.r_baseline)
+            if res.deform_pct < 8.0:
+                radii.append(res.r_baseline)
+    cap.release()
+    use = radii if len(radii) >= 3 else any_r
+    if len(use) < 2:
+        return None
+    r = float(np.median(radii))
+    bpx = r * 2.0
+    return bpx, bpx / known_mm
 
 def find_hand_press_ball(
     frame: np.ndarray,
@@ -274,10 +298,22 @@ def export(
         use_yolo = False if hand_press else (not fast_mode)
     analyzer = VideoBallAnalyzer(ball_type=ball_type, use_yolo=use_yolo, fast_mode=fast_mode)
 
-    print("  Locking baseline from in-air frames...", flush=True)
-    locked = analyzer.lock_baseline_from_video(str(video_path))
+    print("  Locking baseline...", flush=True)
+    locked = False
     if hand_press:
-        analyzer.bounce_counter = None  
+        press_base = _lock_press_baseline(video_path, ball_type, analyzer.known_mm)
+        if press_base:
+            bpx, ppm = press_base
+            analyzer.baseline_vertical_px = bpx
+            analyzer._px_per_mm = ppm
+            analyzer.calibrator.pixels_per_mm = ppm
+            analyzer.baseline_locked = True
+            analyzer.bounce_counter = None
+            locked = True
+    if not locked:
+        locked = analyzer.lock_baseline_from_video(str(video_path))
+        if hand_press:
+            analyzer.bounce_counter = None
     if not locked and fixed_baseline_px and fixed_baseline_px > 0:
         analyzer.baseline_vertical_px = fixed_baseline_px
         analyzer._px_per_mm = fixed_px_per_mm or (fixed_baseline_px / analyzer.known_mm)
@@ -353,41 +389,31 @@ def export(
 
         deform_res: DeformationResult | None = None
         if hand_press:
-            last_xy = (last_good.cx, last_good.cy) if last_good else None
-            ball = find_hand_press_ball(frame, baseline_px, last_xy)
-            if ball is None:
-                ball = find_hand_press_ball(frame, baseline_px, None)
-            if ball is None and last_good is not None:
-                cx_b, cy_b, maj_b = last_good.cx, last_good.cy, last_good.major_px
-            elif ball is not None:
-                cx_b, cy_b, maj_b = ball
-            else:
-                cx_b = cy_b = maj_b = 0.0
-            if cx_b > 0:
-                dr = analyze_deformation(
-                    frame, ball_type, cx_b, cy_b, baseline_px * 0.5, require_skin=True
-                )
-            else:
-                dr = DeformationResult()
+            hint_cx = last_good.cx if last_good else 0.0
+            hint_cy = last_good.cy if last_good else 0.0
+            dr = analyze_deformation(
+                frame, ball_type, hint_cx, hint_cy, baseline_px * 0.5, require_skin=True
+            )
             deform_res = deform_smoother.update(dr)
             dent = deform_res.deform_pct if deform_res.valid else 0.0
-            if deform_res.valid:
-                cx_b, cy_b = deform_res.cx, deform_res.cy
+            cx_b = deform_res.cx if deform_res.valid else 0.0
+            cy_b = deform_res.cy if deform_res.valid else 0.0
+            r_px = deform_res.r_baseline * 2 if deform_res.valid else baseline_px
             r = VideoFrameResult(
-                detected=bool(deform_res.valid or cx_b > 0),
-                status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else ("tracking" if cx_b > 0 else "searching"),
+                detected=bool(deform_res.valid),
+                status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else ("tracking" if deform_res.valid else "searching"),
                 cx=cx_b,
                 cy=cy_b,
-                major_px=maj_b if maj_b > 20 else baseline_px,
-                minor_px=baseline_px * (1.0 - dent / 100.0) if dent > 0 else baseline_px,
+                major_px=r_px,
+                minor_px=r_px * (1.0 - dent / 100.0) if dent > 0 else r_px,
                 angle=0.0,
-                vertical_load_px=baseline_px * (1.0 - dent / 100.0),
+                vertical_load_px=r_px * (1.0 - dent / 100.0),
                 diameter_mm=baseline_mm * (1.0 - dent / 100.0) if dent > 0 else baseline_mm,
                 compression_pct=dent,
                 raw_compression_pct=dent,
                 baseline_locked=True,
                 baseline_mm=baseline_mm,
-                confidence=0.88 if deform_res.valid else (0.55 if cx_b > 0 else 0.0),
+                confidence=0.90 if deform_res.valid else 0.0,
                 eccentricity=float(np.sqrt(max(0.0, 1.0 - ((1.0 - dent / 100.0) ** 2)))),
                 yolo_active=False,
             )

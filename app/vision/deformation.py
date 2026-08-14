@@ -7,7 +7,7 @@ import numpy as np
 
 from app.vision.ball_profiles import get_profile
 
-N_ANGLES = 360
+N_ANG = 180
 
 
 @dataclass
@@ -29,207 +29,240 @@ def _masks(frame: np.ndarray, ball_type: str) -> tuple[np.ndarray, np.ndarray]:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lo = profile.hsv_lower.copy()
     hi = profile.hsv_upper.copy()
-    lo[1] = max(int(lo[1]), 90)
-    lo[2] = max(int(lo[2]), 110)
+    lo[1] = max(int(lo[1]) - 25, 55)
+    lo[2] = max(int(lo[2]) - 40, 70)
     yellow = cv2.inRange(hsv, lo, hi)
-    skin = cv2.inRange(hsv, (0, 30, 45), (25, 175, 255))
-    skin |= cv2.inRange(hsv, (160, 30, 45), (180, 175, 255))
-    yellow = cv2.bitwise_and(yellow, cv2.bitwise_not(skin))
+    if ball_type.startswith("pickleball") or ball_type == "tennis":
+        yellow |= cv2.inRange(hsv, (16, 50, 60), (50, 255, 255))
+    skin = cv2.inRange(hsv, (0, 35, 45), (25, 180, 255))
+    skin |= cv2.inRange(hsv, (160, 35, 45), (180, 180, 255))
+    skin = cv2.bitwise_and(skin, cv2.bitwise_not(yellow))
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     yellow = cv2.morphologyEx(yellow, cv2.MORPH_OPEN, k)
-    yellow = cv2.morphologyEx(
-        yellow, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)), iterations=2
-    )
+    yellow = cv2.morphologyEx(yellow, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))
+    cnts, _ = cv2.findContours(yellow, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if cnts:
+        big = max(cnts, key=cv2.contourArea)
+        if cv2.contourArea(big) > 800:
+            filled = np.zeros_like(yellow)
+            cv2.drawContours(filled, [big], -1, 255, -1)
+            yellow = filled
+    skin = cv2.morphologyEx(skin, cv2.MORPH_OPEN, k)
+    skin = cv2.dilate(skin, k, iterations=2)
     return yellow, skin
 
 
-def _select_blob(mask: np.ndarray, cx: float, cy: float, r: float) -> tuple[np.ndarray | None, int]:
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    big: list[tuple[float, np.ndarray]] = []
-    min_area = max(700.0, (r * 0.45) ** 2)
+def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | None):
+    h, w = frame.shape[:2]
+    yellow, skin = _masks(frame, ball_type)
+    mask = cv2.bitwise_and(yellow, cv2.bitwise_not(skin))
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    core = cv2.erode(mask, k, iterations=1)
+    contours, _ = cv2.findContours(core, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        contours, _ = cv2.findContours(yellow, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    min_area = max(600.0, (min(h, w) * 0.07) ** 2)
+    best = None
+    best_score = -1e18
+    n_ok = 0
     for c in contours:
         area = float(cv2.contourArea(c))
         if area < min_area:
             continue
-        m = cv2.moments(c)
-        if m["m00"] <= 0:
+        peri = cv2.arcLength(c, True) + 1e-6
+        circ = 4.0 * np.pi * area / (peri * peri)
+        if circ < 0.38:
             continue
-        d = float(np.hypot(m["m10"] / m["m00"] - cx, m["m01"] / m["m00"] - cy))
-        if d > r * 1.4:
+        (x, y), rad = cv2.minEnclosingCircle(c)
+        if y > h * 0.93 or rad < min(h, w) * 0.05:
             continue
-        big.append((area, c))
-    if not big:
-        return None, 0
-    big.sort(key=lambda x: x[0], reverse=True)
-    return big[0][1], len(big)
+        n_ok += 1
+        score = area * circ
+        if hint is not None:
+            score -= float(np.hypot(x - hint[0], y - hint[1])) * 8.0
+        if score > best_score:
+            best_score, best = score, (float(x), float(y), float(rad), yellow, skin, c)
+    if best is None or n_ok > 3:
+        return None
+    return best
 
 
-def _polar_radii(contour: np.ndarray, cx: float, cy: float) -> np.ndarray:
-    pts = contour.reshape(-1, 2).astype(np.float64)
-    dx = pts[:, 0] - cx
-    dy = pts[:, 1] - cy
-    ang = (np.degrees(np.arctan2(dy, dx)).astype(int) % N_ANGLES)
-    rad = np.hypot(dx, dy)
-    radii = np.full(N_ANGLES, np.nan)
-    for a, rr in zip(ang, rad):
-        if np.isnan(radii[a]) or rr > radii[a]:
-            radii[a] = rr
-    idx = np.arange(N_ANGLES)
-    good = ~np.isnan(radii)
-    if good.sum() < N_ANGLES * 0.5:
+def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float) -> np.ndarray:
+    h, w = mask.shape[:2]
+    radii = np.zeros(N_ANG, dtype=np.float64)
+    steps = max(int(r_max * 1.15), 50)
+    ts = np.linspace(0.18 * r_max, 1.28 * r_max, steps)
+    for i in range(N_ANG):
+        ang = 2.0 * np.pi * i / N_ANG
+        ca, sa = np.cos(ang), np.sin(ang)
+        last = 0.0
+        for t in ts:
+            x = int(round(cx + t * ca))
+            y = int(round(cy + t * sa))
+            if x < 0 or y < 0 or x >= w or y >= h:
+                break
+            if mask[y, x] > 0:
+                last = t
+            elif last > 0 and t > last + 5:
+                break
+        radii[i] = last
+    good = radii > 1
+    if good.sum() < N_ANG * 0.4:
         return radii
-    xp = np.concatenate([idx[good], idx[good] + N_ANGLES])
+    idx = np.arange(N_ANG)
+    xp = np.concatenate([idx[good], idx[good] + N_ANG])
     fp = np.concatenate([radii[good], radii[good]])
     radii = np.interp(idx, xp, fp)
-    k = 5
-    pad = np.concatenate([radii[-k:], radii, radii[:k]])
-    radii = np.convolve(pad, np.ones(2 * k + 1) / (2 * k + 1), mode="same")[k:-k]
-    return radii
+    pad = np.r_[radii[-5:], radii, radii[:5]]
+    return np.convolve(pad, np.ones(11) / 11.0, mode="valid")
 
 
-def _fit_circle(xs: np.ndarray, ys: np.ndarray) -> tuple[float, float, float] | None:
-    if len(xs) < 8:
-        return None
-    A = np.c_[xs, ys, np.ones(len(xs))]
-    b = xs * xs + ys * ys
-    try:
-        sol, *_ = np.linalg.lstsq(A, b, rcond=None)
-    except np.linalg.LinAlgError:
-        return None
-    cx = sol[0] / 2.0
-    cy = sol[1] / 2.0
-    rad = sol[2] + cx * cx + cy * cy
-    if rad <= 0:
-        return None
-    return float(cx), float(cy), float(np.sqrt(rad))
+def _skin_peak(cx: float, cy: float, r_new: float, skin: np.ndarray) -> tuple[int | None, np.ndarray]:
+    strength = np.zeros(N_ANG, dtype=np.float64)
+    ys, xs = np.where(skin > 0)
+    if len(xs) < 25:
+        return None, strength
+    dx = xs.astype(np.float64) - cx
+    dy = ys.astype(np.float64) - cy
+    dist = np.sqrt(dx * dx + dy * dy)
+    ring = (dist >= r_new * 0.88) & (dist <= r_new * 1.38)
+    if not np.any(ring):
+        return None, strength
+    ang = (np.arctan2(dy[ring], dx[ring]) + 2 * np.pi) % (2 * np.pi)
+    bins = (ang / (2 * np.pi) * N_ANG).astype(np.int32) % N_ANG
+    np.add.at(strength, bins, 1.0)
+    pad = np.r_[strength[-8:], strength, strength[:8]]
+    strength = np.convolve(pad, np.ones(17) / 17.0, mode="valid")
+    peak = int(np.argmax(strength))
+    if strength[peak] < 2.5:
+        return None, strength
+    return peak, strength
 
 
-def _largest_arc(flags: np.ndarray) -> np.ndarray:
-    out = np.zeros_like(flags)
-    if not flags.any():
+def _largest_arc(zone: np.ndarray) -> np.ndarray:
+    n = len(zone)
+    out = np.zeros(n, dtype=bool)
+    if not zone.any():
         return out
-    n = len(flags)
-    doubled = np.concatenate([flags, flags])
+    ext = np.r_[zone, zone]
     best_len = best_start = 0
-    cur_len = cur_start = 0
-    for i in range(2 * n):
-        if doubled[i]:
-            if cur_len == 0:
-                cur_start = i
-            cur_len += 1
-            if cur_len > best_len:
-                best_len, best_start = cur_len, cur_start
-        else:
-            cur_len = 0
+    i = 0
+    while i < len(ext):
+        if not ext[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(ext) and ext[j]:
+            j += 1
+        if j - i > best_len:
+            best_len, best_start = j - i, i
+        i = j
     best_len = min(best_len, n)
-    for i in range(best_start, best_start + best_len):
-        out[i % n] = True
+    for t in range(best_start, best_start + best_len):
+        out[t % n] = True
+    if out.sum() > n // 3:
+        mid = (best_start + best_len // 2) % n
+        dang = np.minimum(np.abs(np.arange(n) - mid), n - np.abs(np.arange(n) - mid))
+        out = dang <= 22
     return out
 
 
 def analyze_deformation(
     frame: np.ndarray,
     ball_type: str,
-    cx: float,
-    cy: float,
-    approx_radius: float,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    approx_radius: float = 0.0,
     *,
     require_skin: bool = True,
 ) -> DeformationResult:
-    if approx_radius < 20:
-        return DeformationResult(reason="no-baseline")
-    yellow, skin = _masks(frame, ball_type)
-    contour, n_blobs = _select_blob(yellow, cx, cy, approx_radius)
-    if contour is None:
+    hint = (cx, cy) if cx > 0 and cy > 0 else None
+    hit = _find_ball(frame, ball_type, hint)
+    if hit is None:
         return DeformationResult(reason="no-ball")
-    if n_blobs > 2:
-        return DeformationResult(reason="multi-blob")
-
-    m = cv2.moments(contour)
-    cx = m["m10"] / m["m00"]
-    cy = m["m01"] / m["m00"]
-    radii = _polar_radii(contour, cx, cy)
-    if np.isnan(radii).any():
+    cx, cy, r_enc, yellow, skin, contour = hit
+    radii = _polar_radii(yellow, cx, cy, r_enc)
+    valid = radii > 0.25 * r_enc
+    if valid.sum() < N_ANG * 0.35:
         return DeformationResult(reason="sparse-contour")
 
-    # Refine center/baseline from the undeformed rim (points near the outer radius),
-    # so the reference circle sits on the round part, not the finger dent.
-    ang = np.deg2rad(np.arange(N_ANGLES).astype(np.float64))
-    r0 = float(np.percentile(radii, 78))
-    rim = radii >= r0 * 0.94
-    if rim.sum() >= 30:
-        fit = _fit_circle(cx + radii[rim] * np.cos(ang[rim]), cy + radii[rim] * np.sin(ang[rim]))
-        if fit is not None:
-            fcx, fcy, fr = fit
-            if np.hypot(fcx - cx, fcy - cy) <= approx_radius * 0.6:
-                cx, cy = fcx, fcy
-                radii = _polar_radii(contour, cx, cy)
-                if np.isnan(radii).any():
-                    return DeformationResult(reason="sparse-contour")
+    r_new = float(np.percentile(radii[valid], 88))
+    r_new = float(np.clip(r_new, 0.82 * r_enc, 1.08 * r_enc))
+    deficit = np.maximum(0.0, r_new - radii)
+    deficit[~valid] = 0.0
 
-    r_baseline = float(np.percentile(radii, 80))
-    if not (approx_radius * 0.5 <= r_baseline <= approx_radius * 1.7):
-        return DeformationResult(reason="implausible-radius")
+    zone = np.zeros(N_ANG, dtype=bool)
+    press_pct = 0.0
+    skin_peak, skin_str = _skin_peak(cx, cy, r_new, skin)
+    deep_thr = max(0.08 * r_new, 8.0)
 
-    deficit = np.maximum(0.0, r_baseline - radii)
-    core = deficit[deficit <= np.percentile(deficit, 70)]
-    sigma = 1.4826 * float(np.median(np.abs(core - np.median(core)))) + 1e-6
-    threshold = max(3.5 * sigma, 0.04 * r_baseline, 5.0)
+    if skin_peak is not None:
+        skin_n = skin_str / max(float(skin_str.max()), 1e-6)
+        def_n = deficit / max(r_new, 1.0)
+        joint = skin_n * def_n
+        pad = np.r_[joint[-6:], joint, joint[:6]]
+        joint = np.convolve(pad, np.ones(13) / 13.0, mode="valid")
+        cand = (skin_str >= max(0.20 * skin_str[skin_peak], 1.2)) & (deficit >= deep_thr) & valid
+        if np.any(cand):
+            peak = int(np.argmax(np.where(cand, joint, -1.0)))
+            dang = np.minimum(
+                np.abs(np.arange(N_ANG) - peak),
+                N_ANG - np.abs(np.arange(N_ANG) - peak),
+            )
+            zone = (
+                (dang <= 14)
+                & (deficit >= max(0.55 * deficit[peak], deep_thr * 0.65))
+                & (skin_str >= max(0.18 * skin_str[peak], 1.0))
+                & valid
+            )
+            zone[peak] = True
+    elif not require_skin or float(np.percentile(deficit, 95)) >= 0.14 * r_new:
+        deep = (deficit >= 0.14 * r_new) & valid
+        zone = _largest_arc(deep)
+        if not (8 <= int(zone.sum()) <= 40):
+            zone[:] = False
 
-    flags = _largest_arc(deficit > threshold)
-    # Reject implausible arcs: a real finger press spans a limited arc, not the whole ball.
-    if flags.any() and not (8 <= int(flags.sum()) <= 200):
-        flags[:] = False
+    zone = _largest_arc(zone)
+    if zone.sum() < 8:
+        zone[:] = False
+        press_pct = 0.0
+    else:
+        zdef = deficit[zone]
+        press_pct = float(np.clip(np.percentile(zdef, 65) / r_new * 100.0, 0.0, 40.0))
+        if press_pct < 8.0:
+            zone[:] = False
+            press_pct = 0.0
 
-    if require_skin and flags.any():
-        ys, xs = np.mgrid[0 : frame.shape[0], 0 : frame.shape[1]]
-        idx = np.where(flags)[0]
-        a0, a1 = np.deg2rad(idx.min()), np.deg2rad(idx.max())
-        ang_img = np.arctan2(ys - cy, xs - cx)
-        ang_img = np.where(ang_img < 0, ang_img + 2 * np.pi, ang_img)
-        dist = np.hypot(xs - cx, ys - cy)
-        band = (dist >= r_baseline * 0.9) & (dist <= r_baseline * 1.25)
-        band &= (ang_img >= min(a0, a1)) & (ang_img <= max(a0, a1))
-        tot = int(band.sum())
-        frac = float((skin > 0)[band].sum()) / tot if tot > 50 else 0.0
-        if frac < 0.06:
-            flags[:] = False
-
-    peak = float(np.percentile(deficit[flags], 90)) if flags.any() else 0.0
-    deform_pct = min(45.0, peak / r_baseline * 100.0)
-    if deform_pct < 8.0:
-        flags[:] = False
-        deform_pct = 0.0
-
+    ang = 2.0 * np.pi * np.arange(N_ANG) / N_ANG
+    outline = np.column_stack([cx + radii * np.cos(ang), cy + radii * np.sin(ang)])
     return DeformationResult(
         valid=True,
         reason="ok",
         cx=cx,
         cy=cy,
-        r_baseline=r_baseline,
+        r_baseline=r_new,
         radii=radii,
-        contour=contour.reshape(-1, 2),
-        arc_mask=flags,
-        deform_pct=deform_pct,
-        threshold_px=threshold,
+        contour=outline,
+        arc_mask=zone,
+        deform_pct=press_pct,
+        threshold_px=deep_thr,
     )
 
 
 class DeformationSmoother:
-    """Rolling-median smoothing of deformation to suppress single-frame jitter."""
-
-    def __init__(self, window: int = 5, hold: int = 6) -> None:
+    def __init__(self, window: int = 3) -> None:
         self._pct: list[float] = []
         self._win = window
-        self._hold_max = hold
-        self._last: DeformationResult | None = None
-        self._hold = 0
 
     def update(self, res: DeformationResult) -> DeformationResult:
         if not res.valid:
-            if self._last is not None and self._hold > 0:
-                self._hold -= 1
-                return self._last
+            self._pct.clear()
+            return res
+        if res.deform_pct < 8.0:
+            self._pct = [0.0]
+            res.deform_pct = 0.0
+            if res.arc_mask is not None:
+                res.arc_mask[:] = False
             return res
         self._pct.append(res.deform_pct)
         if len(self._pct) > self._win:
@@ -237,17 +270,15 @@ class DeformationSmoother:
         res.deform_pct = float(np.median(self._pct))
         if res.deform_pct < 8.0 and res.arc_mask is not None:
             res.arc_mask[:] = False
-        self._last = res
-        self._hold = self._hold_max
+            res.deform_pct = 0.0
         return res
 
 
 def deformed_contour_points(res: DeformationResult) -> np.ndarray | None:
-    """Pixel points of the true deformed arc only, for overlay drawing."""
-    if not res.valid or res.arc_mask is None or not res.arc_mask.any():
+    if not res.valid or res.arc_mask is None or not res.arc_mask.any() or res.radii is None:
         return None
     idx = np.where(res.arc_mask)[0]
-    ang = np.deg2rad(idx.astype(np.float64))
+    ang = 2.0 * np.pi * idx / N_ANG
     r = res.radii[idx]
     xs = res.cx + r * np.cos(ang)
     ys = res.cy + r * np.sin(ang)

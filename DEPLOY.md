@@ -92,18 +92,19 @@ Upload a video at `/`. API docs: `/docs`.
 
 ## Deploy to Vercel
 
-## Deploy to Vercel
+The repo is Vercel-ready (`vercel.json`, `api/index.py`). Use this for the **web UI + short videos only**.
 
-1. Push this repo to GitHub: `https://github.com/AbdullahYaseen01/Tennis-Table`
-2. Go to [vercel.com](https://vercel.com) → **Add New Project** → import **Tennis-Table**
-3. Framework preset: **Other**
-4. Root directory: `.` (repo root)
-5. Deploy — Vercel reads `vercel.json` automatically
+1. [vercel.com](https://vercel.com) → **Add New Project** → import **Tennis-Table**
+2. Framework: **Other**, root: `.`
+3. Deploy — it reads `vercel.json` (`VERCEL=1`, 60s / 3008 MB)
 
-## What runs on Vercel
+**Limits (cannot be removed):** Hobby timeout is **10s**, Pro **60s**. Upload **under ~8 seconds**, 720p or smaller. Longer videos will fail. For full-length pickleball tests, Railway/Render is still required.
 
-- FastAPI web demo at `/` (upload video, live camera UI)
-- Endpoints: `/upload`, `/status/{id}`, `/download/{id}`, `/analyze-frame`, `/analyze-baseline`
+- UI: `/`  ·  docs: `/docs`
+- Do not expect ffmpeg MP4 on Vercel; output may be `.avi`
+- Files in `/tmp` vanish after the request
+
+---
 
 ## Local full app (desktop + all features)
 
