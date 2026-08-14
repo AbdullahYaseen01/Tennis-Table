@@ -334,9 +334,10 @@ def export(
     max_comp = 0.0
     max_comp_frame = 0
     detected = 0
+    press_frames = 0
+    confs: list[float] = []
+    rest_radii: list[float] = []
     comp_hist: deque[float] = deque(maxlen=5)
-    press_hold = 0
-    last_press_comp = 0.0
     deform_smoother = DeformationSmoother()
     while True:
         ok, frame = cap.read()
@@ -346,7 +347,9 @@ def export(
         if scale != 1.0:
             frame = cv2.resize(frame, (w_out, h_out), interpolation=cv2.INTER_AREA)
 
-        r = analyzer.process_frame(frame, frame_idx / fps)
+        r = analyzer.process_frame(frame, frame_idx / fps) if not hand_press else VideoFrameResult(
+            detected=False, status="searching", baseline_locked=True, baseline_mm=baseline_mm
+        )
 
         deform_res: DeformationResult | None = None
         if hand_press:
@@ -367,27 +370,27 @@ def export(
             else:
                 dr = DeformationResult()
             deform_res = deform_smoother.update(dr)
+            dent = deform_res.deform_pct if deform_res.valid else 0.0
             if deform_res.valid:
-                dent = deform_res.deform_pct
                 cx_b, cy_b = deform_res.cx, deform_res.cy
-                r = VideoFrameResult(
-                    detected=True,
-                    status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else "tracking",
-                    cx=cx_b,
-                    cy=cy_b,
-                    major_px=maj_b if maj_b > 20 else baseline_px,
-                    minor_px=baseline_px * (1.0 - dent / 100.0) if dent > 0 else baseline_px,
-                    angle=0.0,
-                    vertical_load_px=baseline_px * (1.0 - dent / 100.0),
-                    diameter_mm=baseline_mm * (1.0 - dent / 100.0) if dent > 0 else baseline_mm,
-                    compression_pct=dent,
-                    raw_compression_pct=dent,
-                    baseline_locked=True,
-                    baseline_mm=baseline_mm,
-                    confidence=0.85 if deform_res.valid else 0.0,
-                    eccentricity=float(np.sqrt(max(0.0, 1.0 - ((1.0 - dent / 100.0) ** 2)))),
-                    yolo_active=False,
-                )
+            r = VideoFrameResult(
+                detected=bool(deform_res.valid or cx_b > 0),
+                status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else ("tracking" if cx_b > 0 else "searching"),
+                cx=cx_b,
+                cy=cy_b,
+                major_px=maj_b if maj_b > 20 else baseline_px,
+                minor_px=baseline_px * (1.0 - dent / 100.0) if dent > 0 else baseline_px,
+                angle=0.0,
+                vertical_load_px=baseline_px * (1.0 - dent / 100.0),
+                diameter_mm=baseline_mm * (1.0 - dent / 100.0) if dent > 0 else baseline_mm,
+                compression_pct=dent,
+                raw_compression_pct=dent,
+                baseline_locked=True,
+                baseline_mm=baseline_mm,
+                confidence=0.88 if deform_res.valid else (0.55 if cx_b > 0 else 0.0),
+                eccentricity=float(np.sqrt(max(0.0, 1.0 - ((1.0 - dent / 100.0) ** 2)))),
+                yolo_active=False,
+            )
 
         has_shape = (
             r.major_px > 10
@@ -398,56 +401,42 @@ def export(
 
         if has_shape:
             last_good = r
-            hold = 12 if hand_press else 4
+            hold = 4
             detected += 1
             raw = float(r.raw_compression_pct)
             comp_hist.append(raw)
+            confs.append(r.confidence)
+            if raw >= 8.0:
+                press_frames += 1
+            elif deform_res is not None and deform_res.valid and deform_res.r_baseline > 0:
+                rest_radii.append(deform_res.r_baseline)
             if raw >= IMPACT_STATUS_MIN_PCT:
                 max_comp = max(max_comp, raw)
                 if raw >= max_comp - 0.05:
                     max_comp_frame = frame_idx
-        elif last_good is not None and hold > 0:
+        elif last_good is not None and hold > 0 and not hand_press:
             hold -= 1
-            
-            dent = 0.0
-            if hand_press and analyzer.baseline_vertical_px:
-                dent = analyzer._hand_dent_pct(
-                    frame, last_good.cx, last_good.cy, analyzer.baseline_vertical_px * 0.5
-                )
             r = VideoFrameResult(
                 detected=True,
-                status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else "tracking",
+                status="tracking",
                 cx=last_good.cx,
                 cy=last_good.cy,
                 major_px=last_good.major_px,
                 minor_px=last_good.minor_px,
                 angle=last_good.angle,
                 vertical_load_px=last_good.vertical_load_px,
-                diameter_mm=baseline_mm * (1.0 - dent / 100.0) if dent > 0 else baseline_mm,
-                compression_pct=dent,
-                raw_compression_pct=dent,
+                diameter_mm=baseline_mm,
+                compression_pct=0.0,
+                raw_compression_pct=0.0,
                 baseline_locked=True,
                 baseline_mm=baseline_mm,
-                confidence=0.75,
+                confidence=0.60,
                 yolo_active=last_good.yolo_active,
             )
             has_shape = True
-            comp_hist.append(dent)
-            detected += 1
-            if dent >= IMPACT_STATUS_MIN_PCT:
-                max_comp = max(max_comp, dent)
+            comp_hist.append(0.0)
 
-        
         live_comp = float(r.raw_compression_pct) if has_shape else 0.0
-        if hand_press:
-            if live_comp >= 11.0:
-                last_press_comp = live_comp
-                press_hold = 10
-            elif press_hold > 0 and last_press_comp >= 11.0:
-                live_comp = max(live_comp, last_press_comp * 0.9)
-                press_hold -= 1
-            if live_comp >= IMPACT_STATUS_MIN_PCT:
-                max_comp = max(max_comp, live_comp)
         display = VideoFrameResult(
             **{**r.__dict__, "compression_pct": live_comp, "raw_compression_pct": live_comp}
         )
@@ -455,6 +444,14 @@ def export(
         if hand_press:
             if deform_res is not None and deform_res.valid:
                 draw_deformation(frame, deform_res, baseline_mm, h_out)
+            elif r.cx > 0 and r.cy > 0:
+                cv2.circle(frame, (int(r.cx), int(r.cy)), baseline_radius, (0, 255, 0), 3, cv2.LINE_AA)
+                cv2.drawMarker(frame, (int(r.cx), int(r.cy)), (0, 0, 255), cv2.MARKER_CROSS, 18, 2)
+                cv2.putText(
+                    frame, "0.0% deformed",
+                    (max(8, int(r.cx) - 110), max(40, int(r.cy) - baseline_radius - 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.78, (0, 255, 0), 2, cv2.LINE_AA,
+                )
         else:
             draw_measurement(
                 frame, display, baseline_radius, h_out, ball_type=ball_type, hand_press=hand_press
@@ -501,16 +498,26 @@ def export(
     writer.release()
 
     det_rate = round(detected / max(frame_idx, 1) * 100, 1)
+    mean_conf = float(np.mean(confs)) * 100.0 if confs else 0.0
+    if rest_radii:
+        arr = np.asarray(rest_radii, dtype=np.float64)
+        stab = max(0.0, 100.0 - float(np.std(arr) / (np.mean(arr) + 1e-6) * 400.0))
+    else:
+        stab = det_rate
     metrics = {
         "baseline_mm": baseline_mm,
         "max_compression_pct": round(max_comp, 1),
         "max_compression_frame": max_comp_frame,
-        "bounce_count": analyzer.bounce_count,
+        "bounce_count": 0 if hand_press else analyzer.bounce_count,
+        "press_frames": press_frames,
         "frames": frame_idx,
         "detected_frames": detected,
         "detection_rate_pct": det_rate,
+        "confidence_pct": round(mean_conf, 1),
+        "stability_pct": round(stab, 1),
         "output": str(out_path),
         "fps": round(fps, 2),
+        "mode": "hand_press" if hand_press else "bounce",
     }
 
     print(

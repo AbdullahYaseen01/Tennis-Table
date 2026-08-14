@@ -709,7 +709,11 @@
       document.getElementById("valCompression").textContent =
         r.max_compression_pct != null ? r.max_compression_pct.toFixed(1) : "—";
       document.getElementById("valBounces").textContent =
-        r.bounce_count != null ? r.bounce_count : "—";
+        r.mode === "hand_press"
+          ? (r.press_frames != null ? r.press_frames : 0)
+          : (r.bounce_count != null ? r.bounce_count : "—");
+      const bounceLabel = document.querySelector("#valBounces")?.parentElement?.querySelector(".card-label");
+      if (bounceLabel) bounceLabel.textContent = r.mode === "hand_press" ? "Press frames" : "Bounces detected";
       document.getElementById("valFrames").textContent =
         r.frames != null ? r.frames : "—";
       if (r.detection_rate_pct != null) {
@@ -717,10 +721,12 @@
           r.frames + " (" + r.detection_rate_pct + "% tracked)";
       }
       document.getElementById("valAccuracy").textContent =
-        extra && extra.stability_pct != null ? extra.stability_pct + "%" : "—";
+        r.stability_pct != null ? r.stability_pct + "%"
+          : (extra && extra.stability_pct != null ? extra.stability_pct + "%" : "—");
+      const confVal = r.confidence_pct != null ? r.confidence_pct
+        : (extra && extra.confidence_pct != null ? extra.confidence_pct : null);
       document.getElementById("valConfidence").textContent =
-        (r.confidence_pct != null ? r.confidence_pct : extra && extra.confidence_pct) != null
-          ? (r.confidence_pct || extra.confidence_pct) + "%" : "—";
+        confVal != null ? confVal + "%" : "—";
 
       const banner = document.getElementById("accuracyBanner");
       if (extra && extra.good_frames != null) {
