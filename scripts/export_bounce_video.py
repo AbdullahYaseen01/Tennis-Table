@@ -45,11 +45,14 @@ def _lock_press_baseline(video_path: Path, ball_type: str, known_mm: float) -> t
                 radii.append(res.r_baseline)
     cap.release()
     use = radii if len(radii) >= 3 else any_r
+    use = [float(v) for v in use if np.isfinite(v) and v > 20]
     if len(use) < 2:
         return None
-    r = float(np.median(radii))
+    r = float(np.median(use))
+    if not np.isfinite(r) or r < 20:
+        return None
     bpx = r * 2.0
-    return bpx, bpx / known_mm
+    return bpx, bpx / max(known_mm, 1e-6)
 
 def find_hand_press_ball(
     frame: np.ndarray,
@@ -244,10 +247,18 @@ def draw_measurement(
         cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA,
     )
 
+def _ival(v: float, fallback: int = 0) -> int:
+    x = float(v)
+    if not np.isfinite(x):
+        return fallback
+    return int(round(x))
+
+
 def draw_deformation(frame, res: DeformationResult, baseline_mm: float, frame_h: int) -> None:
-    """Draw validated deformation only: baseline circle, true contour, deformed arc."""
-    cx, cy = int(res.cx), int(res.cy)
-    r = int(res.r_baseline)
+    if not res.valid or not np.isfinite(res.cx) or not np.isfinite(res.cy) or not np.isfinite(res.r_baseline):
+        return
+    cx, cy = _ival(res.cx), _ival(res.cy)
+    r = max(1, _ival(res.r_baseline, 1))
     cv2.circle(frame, (cx, cy), r, (0, 255, 255), 1, cv2.LINE_AA)
     if res.contour is not None and len(res.contour) > 3:
         cv2.polylines(frame, [res.contour.astype(np.int32)], True, (0, 255, 0), 2, cv2.LINE_AA)
@@ -324,11 +335,21 @@ def export(
         analyzer.bounce_counter = BounceCounter(analyzer._frame_h or 720, analyzer._fps, floor_frac=analyzer._floor_frac)
         analyzer._contact = ContactPhaseTracker(analyzer._frame_h or 720, floor_frac=analyzer._floor_frac)
     if not analyzer.baseline_locked:
-        raise RuntimeError("Could not lock baseline from video")
+        if hand_press:
+            analyzer.baseline_vertical_px = 220.0
+            analyzer._px_per_mm = 220.0 / analyzer.known_mm
+            analyzer.calibrator.pixels_per_mm = analyzer._px_per_mm
+            analyzer.baseline_locked = True
+            analyzer.bounce_counter = None
+        else:
+            raise RuntimeError("Could not lock baseline from video")
 
     baseline_px = analyzer.baseline_vertical_px or 320.0
+    if not np.isfinite(baseline_px) or baseline_px < 20:
+        baseline_px = 320.0
+        analyzer.baseline_vertical_px = baseline_px
     baseline_mm = analyzer.known_mm
-    baseline_radius = int(baseline_px / 2)
+    baseline_radius = max(1, int(round(baseline_px / 2.0)))
     floor_frac = analyzer._floor_frac
     ball_label = ball_type.replace("_", " ").upper()
 
@@ -396,9 +417,13 @@ def export(
             )
             deform_res = deform_smoother.update(dr)
             dent = deform_res.deform_pct if deform_res.valid else 0.0
-            cx_b = deform_res.cx if deform_res.valid else 0.0
-            cy_b = deform_res.cy if deform_res.valid else 0.0
-            r_px = deform_res.r_baseline * 2 if deform_res.valid else baseline_px
+            if not np.isfinite(dent):
+                dent = 0.0
+            cx_b = deform_res.cx if deform_res.valid and np.isfinite(deform_res.cx) else 0.0
+            cy_b = deform_res.cy if deform_res.valid and np.isfinite(deform_res.cy) else 0.0
+            r_px = deform_res.r_baseline * 2 if deform_res.valid and np.isfinite(deform_res.r_baseline) else baseline_px
+            if not np.isfinite(r_px) or r_px < 10:
+                r_px = baseline_px
             r = VideoFrameResult(
                 detected=bool(deform_res.valid),
                 status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else ("tracking" if deform_res.valid else "searching"),
@@ -463,6 +488,8 @@ def export(
             comp_hist.append(0.0)
 
         live_comp = float(r.raw_compression_pct) if has_shape else 0.0
+        if not np.isfinite(live_comp):
+            live_comp = 0.0
         display = VideoFrameResult(
             **{**r.__dict__, "compression_pct": live_comp, "raw_compression_pct": live_comp}
         )
@@ -470,12 +497,13 @@ def export(
         if hand_press:
             if deform_res is not None and deform_res.valid:
                 draw_deformation(frame, deform_res, baseline_mm, h_out)
-            elif r.cx > 0 and r.cy > 0:
-                cv2.circle(frame, (int(r.cx), int(r.cy)), baseline_radius, (0, 255, 0), 3, cv2.LINE_AA)
-                cv2.drawMarker(frame, (int(r.cx), int(r.cy)), (0, 0, 255), cv2.MARKER_CROSS, 18, 2)
+            elif r.cx > 0 and r.cy > 0 and np.isfinite(r.cx) and np.isfinite(r.cy):
+                px, py = _ival(r.cx), _ival(r.cy)
+                cv2.circle(frame, (px, py), baseline_radius, (0, 255, 0), 3, cv2.LINE_AA)
+                cv2.drawMarker(frame, (px, py), (0, 0, 255), cv2.MARKER_CROSS, 18, 2)
                 cv2.putText(
                     frame, "0.0% deformed",
-                    (max(8, int(r.cx) - 110), max(40, int(r.cy) - baseline_radius - 20)),
+                    (max(8, px - 110), max(40, py - baseline_radius - 20)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.78, (0, 255, 0), 2, cv2.LINE_AA,
                 )
         else:

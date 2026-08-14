@@ -76,6 +76,7 @@ def assess_frame_quality(width: int, height: int) -> dict:
 
 def _robust_median(values: list[float] | np.ndarray) -> float:
     arr = np.asarray(values, dtype=np.float64)
+    arr = arr[np.isfinite(arr)]
     if len(arr) == 0:
         return 0.0
     med = float(np.median(arr))

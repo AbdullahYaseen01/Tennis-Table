@@ -71,6 +71,8 @@ def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | No
                 continue
             if rad < min(h, w) * 0.05:
                 continue
+            if not np.isfinite(x) or not np.isfinite(y) or not np.isfinite(rad) or rad < 4:
+                continue
             x0, y0 = max(0, int(x - rad)), max(0, int(y - rad))
             x1, y1 = min(w, int(x + rad)), min(h, int(y + rad))
             disk = yellow[y0:y1, x0:x1]
@@ -101,6 +103,8 @@ def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | No
 def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float, skin: np.ndarray | None = None) -> np.ndarray:
     h, w = mask.shape[:2]
     radii = np.zeros(N_ANG, dtype=np.float64)
+    if not np.isfinite(cx) or not np.isfinite(cy) or not np.isfinite(r_max) or r_max < 4:
+        return radii
     steps = max(int(r_max * 1.15), 50)
     ts = np.linspace(0.18 * r_max, 1.28 * r_max, steps)
     for i in range(N_ANG):
@@ -121,7 +125,7 @@ def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float, skin: np.
                 break
         if hit_skin_in and last > 0:
             last = min(last, 0.82 * r_max)
-        radii[i] = last
+        radii[i] = last if np.isfinite(last) else 0.0
     good = radii > 1
     if good.sum() < N_ANG * 0.4:
         return radii
@@ -204,6 +208,8 @@ def analyze_deformation(
 
     r_new = float(np.percentile(radii[valid], 88))
     r_new = float(np.clip(r_new, 0.82 * r_enc, 1.08 * r_enc))
+    if not np.isfinite(r_new) or r_new < 8:
+        return DeformationResult(reason="bad-radius")
     deficit = np.maximum(0.0, r_new - radii)
     deficit[~valid] = 0.0
 
@@ -245,23 +251,25 @@ def analyze_deformation(
     else:
         zdef = deficit[zone]
         press_pct = float(np.clip(np.percentile(zdef, 65) / r_new * 100.0, 0.0, 32.0))
-        if press_pct < 8.0:
+        if not np.isfinite(press_pct) or press_pct < 8.0:
             zone[:] = False
             press_pct = 0.0
 
     ang = 2.0 * np.pi * np.arange(N_ANG) / N_ANG
     outline = np.column_stack([cx + radii * np.cos(ang), cy + radii * np.sin(ang)])
+    outline = np.nan_to_num(outline, nan=0.0, posinf=0.0, neginf=0.0)
+    deform_pct = press_pct if np.isfinite(press_pct) else 0.0
     return DeformationResult(
         valid=True,
         reason="ok",
-        cx=cx,
-        cy=cy,
+        cx=float(cx) if np.isfinite(cx) else 0.0,
+        cy=float(cy) if np.isfinite(cy) else 0.0,
         r_baseline=r_new,
-        radii=radii,
+        radii=np.nan_to_num(radii, nan=0.0),
         contour=outline,
         arc_mask=zone,
-        deform_pct=press_pct,
-        threshold_px=deep_thr,
+        deform_pct=deform_pct,
+        threshold_px=deep_thr if np.isfinite(deep_thr) else 8.0,
     )
 
 
@@ -274,7 +282,7 @@ class DeformationSmoother:
         if not res.valid:
             self._pct.clear()
             return res
-        if res.deform_pct < 8.0:
+        if not np.isfinite(res.deform_pct) or res.deform_pct < 8.0:
             self._pct = [0.0]
             res.deform_pct = 0.0
             if res.arc_mask is not None:
