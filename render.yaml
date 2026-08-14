@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: tennis-ball-tester
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"

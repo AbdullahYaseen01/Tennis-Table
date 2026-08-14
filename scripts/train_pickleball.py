@@ -12,7 +12,14 @@ sys.path.insert(0, str(ROOT))
 
 from app.vision.ball_profiles import PICKLEBALL_DIAMETER_MM, get_profile
 from app.vision.bounce_measure import analyze_ball_in_frame, compute_baseline_from_video
+from app.vision.deformation import DeformationSmoother, analyze_deformation
 from app.vision.video_measure import VideoBallAnalyzer
+
+
+def _arc_iou(a: np.ndarray, b: np.ndarray) -> float:
+    inter = int((a & b).sum())
+    union = int((a | b).sum())
+    return inter / union if union else 0.0
 
 REPORT_DIR = ROOT / "data" / "reports"
 
@@ -78,6 +85,12 @@ def validate_video(video_path: Path, ball_type: str = "pickleball") -> dict:
     sample_frames: list[np.ndarray] = []
     frame_idx = 0
 
+    smoother = DeformationSmoother()
+    coarse_fracs: list[float] = []
+    precise_fracs: list[float] = []
+    stability_ious: list[float] = []
+    ref_arc: np.ndarray | None = None
+
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -86,6 +99,16 @@ def validate_video(video_path: Path, ball_type: str = "pickleball") -> dict:
             sample_frames.append(frame.copy())
 
         r = analyzer.process_frame(frame, frame_idx / fps)
+        if bpx > 0 and r.cx > 0:
+            raw = analyze_deformation(frame, ball_type, r.cx, r.cy, bpx * 0.5, require_skin=True)
+            sm = smoother.update(analyze_deformation(frame, ball_type, r.cx, r.cy, bpx * 0.5, require_skin=True))
+            if raw.valid and raw.arc_mask is not None and raw.arc_mask.any():
+                precise_fracs.append(float(raw.arc_mask.mean()))
+                coarse_fracs.append(1.0)
+                if sm.valid and sm.arc_mask is not None and sm.arc_mask.any():
+                    if ref_arc is not None:
+                        stability_ious.append(_arc_iou(raw.arc_mask, ref_arc))
+                    ref_arc = sm.arc_mask.copy()
         bm = analyze_ball_in_frame(
             frame,
             ball_type=ball_type,
@@ -123,6 +146,12 @@ def validate_video(video_path: Path, ball_type: str = "pickleball") -> dict:
         "resolution": f"{w}x{h}",
         "fps": round(fps, 2),
         "suggested_hsv_tune": tune,
+        "deformed_region_localization": {
+            "coarse_area_frac_of_ball": round(float(np.mean(coarse_fracs)), 3) if coarse_fracs else None,
+            "precise_area_frac_of_ball": round(float(np.mean(precise_fracs)), 3) if precise_fracs else None,
+            "precise_stability_iou": round(float(np.mean(stability_ious)), 3) if stability_ious else None,
+            "frames_with_deformation": len(precise_fracs),
+        },
     }
     return report
 
@@ -163,6 +192,14 @@ def main() -> int:
     print(f"  Peak compression: {report['max_compression_pct']}% @ frame {report['max_compression_frame']}")
     print(f"  Bounces:          {report['bounces']}")
     print(f"  Report saved:     {out_json}")
+
+    loc = report["deformed_region_localization"]
+    if loc["precise_area_frac_of_ball"] is not None:
+        print(
+            f"  Deformed-region localization (before->after):"
+            f" coarse {loc['coarse_area_frac_of_ball']:.3f} -> precise {loc['precise_area_frac_of_ball']:.3f}"
+            f" of ball; stability IoU {loc['precise_stability_iou']}"
+        )
 
     if report["suggested_hsv_tune"]:
         t = report["suggested_hsv_tune"]

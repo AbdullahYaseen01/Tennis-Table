@@ -1,5 +1,6 @@
-# Vercel / serverless web demo only (must stay under 500 MB bundle limit).
+# Web demo (Vercel / Render). Keep slim — no PySide6 / ultralytics.
 opencv-python-headless>=4.8.0,<5
 numpy>=1.24.0,<3
 fastapi>=0.100.0
 python-multipart>=0.0.6
+uvicorn[standard]>=0.23.0

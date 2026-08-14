@@ -13,6 +13,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import IS_VERCEL
+from app.vision.deformation import (
+    DeformationResult,
+    DeformationSmoother,
+    analyze_deformation,
+    deformed_contour_points,
+)
 from app.vision.video_measure import (
     VideoBallAnalyzer,
     VideoFrameResult,
@@ -214,6 +220,30 @@ def draw_measurement(
         cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA,
     )
 
+def draw_deformation(frame, res: DeformationResult, baseline_mm: float, frame_h: int) -> None:
+    """Draw validated deformation only: baseline circle, true contour, deformed arc."""
+    cx, cy = int(res.cx), int(res.cy)
+    r = int(res.r_baseline)
+    cv2.circle(frame, (cx, cy), r, (0, 255, 255), 1, cv2.LINE_AA)
+    if res.contour is not None and len(res.contour) > 3:
+        cv2.polylines(frame, [res.contour.astype(np.int32)], True, (0, 255, 0), 2, cv2.LINE_AA)
+    arc = deformed_contour_points(res)
+    if arc is not None and len(arc) > 1:
+        cv2.polylines(frame, [arc], False, (0, 0, 255), 5, cv2.LINE_AA)
+    cv2.drawMarker(frame, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 18, 2)
+    comp = res.deform_pct
+    color = (0, 0, 255) if comp >= IMPACT_STATUS_MIN_PCT else (0, 255, 255) if comp >= 8 else (0, 255, 0)
+    cv2.putText(
+        frame, f"{comp:.1f}% deformed", (max(8, cx - 110), max(40, cy - r - 20)),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.78, color, 2, cv2.LINE_AA,
+    )
+    dia = baseline_mm * (1.0 - comp / 100.0) if comp > 0 else baseline_mm
+    cv2.putText(
+        frame, f"D = {dia:.1f} mm", (max(8, cx - 75), min(frame_h - 12, cy + r + 30)),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA,
+    )
+
+
 def _smooth_comp(history: deque[float]) -> float:
     if not history:
         return 0.0
@@ -305,6 +335,7 @@ def export(
     comp_hist: deque[float] = deque(maxlen=5)
     press_hold = 0
     last_press_comp = 0.0
+    deform_smoother = DeformationSmoother()
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -315,7 +346,7 @@ def export(
 
         r = analyzer.process_frame(frame, frame_idx / fps)
 
-        
+        deform_res: DeformationResult | None = None
         if hand_press:
             last_xy = (last_good.cx, last_good.cy) if last_good else None
             ball = find_hand_press_ball(frame, baseline_px, last_xy)
@@ -328,11 +359,13 @@ def export(
             else:
                 cx_b = cy_b = maj_b = 0.0
             if cx_b > 0:
-                dent = analyzer._hand_dent_pct(frame, cx_b, cy_b, baseline_px * 0.5)
-                if dent < 11.0:
-                    dent = max(dent, analyzer._hand_dent_pct(frame, cx_b, cy_b, baseline_px * 0.55))
+                deform_res = analyze_deformation(
+                    frame, ball_type, cx_b, cy_b, baseline_px * 0.5, require_skin=True
+                )
+                deform_res = deform_smoother.update(deform_res)
+                dent = deform_res.deform_pct if deform_res.valid else 0.0
                 r = VideoFrameResult(
-                    detected=True,
+                    detected=bool(deform_res.valid),
                     status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else "tracking",
                     cx=cx_b,
                     cy=cy_b,
@@ -345,7 +378,7 @@ def export(
                     raw_compression_pct=dent,
                     baseline_locked=True,
                     baseline_mm=baseline_mm,
-                    confidence=0.85,
+                    confidence=0.85 if deform_res.valid else 0.0,
                     eccentricity=float(np.sqrt(max(0.0, 1.0 - ((1.0 - dent / 100.0) ** 2)))),
                     yolo_active=False,
                 )
@@ -413,9 +446,13 @@ def export(
             **{**r.__dict__, "compression_pct": live_comp, "raw_compression_pct": live_comp}
         )
 
-        draw_measurement(
-            frame, display, baseline_radius, h_out, ball_type=ball_type, hand_press=hand_press
-        )
+        if hand_press:
+            if deform_res is not None and deform_res.valid:
+                draw_deformation(frame, deform_res, baseline_mm, h_out)
+        else:
+            draw_measurement(
+                frame, display, baseline_radius, h_out, ball_type=ball_type, hand_press=hand_press
+            )
 
         if live_comp >= IMPACT_STATUS_MIN_PCT:
             cv2.putText(frame, "IMPACT", (w_out // 2 - 90, 90), cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 255), 3, cv2.LINE_AA)
