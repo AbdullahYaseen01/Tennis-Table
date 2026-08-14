@@ -1,5 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": false
+  },
+  "ignoreCommand": "exit 0",
   "framework": null,
   "installCommand": "pip install -r requirements.txt",
   "rewrites": [
