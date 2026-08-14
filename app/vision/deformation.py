@@ -29,8 +29,8 @@ def _masks(frame: np.ndarray, ball_type: str) -> tuple[np.ndarray, np.ndarray]:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lo = profile.hsv_lower.copy()
     hi = profile.hsv_upper.copy()
-    lo[1] = max(int(lo[1]) - 25, 55)
-    lo[2] = max(int(lo[2]) - 40, 70)
+    lo[1] = max(int(lo[1]) - 18, 62)
+    lo[2] = max(int(lo[2]) - 30, 80)
     yellow = cv2.inRange(hsv, lo, hi)
     if ball_type.startswith("pickleball") or ball_type == "tennis":
         yellow |= cv2.inRange(hsv, (16, 50, 60), (50, 255, 255))
@@ -39,16 +39,9 @@ def _masks(frame: np.ndarray, ball_type: str) -> tuple[np.ndarray, np.ndarray]:
     skin = cv2.bitwise_and(skin, cv2.bitwise_not(yellow))
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     yellow = cv2.morphologyEx(yellow, cv2.MORPH_OPEN, k)
-    yellow = cv2.morphologyEx(yellow, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))
-    cnts, _ = cv2.findContours(yellow, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if cnts:
-        big = max(cnts, key=cv2.contourArea)
-        if cv2.contourArea(big) > 800:
-            filled = np.zeros_like(yellow)
-            cv2.drawContours(filled, [big], -1, 255, -1)
-            yellow = filled
-    skin = cv2.morphologyEx(skin, cv2.MORPH_OPEN, k)
-    skin = cv2.dilate(skin, k, iterations=2)
+    # Light close only — a heavy close fills the finger dent and hides real press.
+    yellow = cv2.morphologyEx(yellow, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    skin = cv2.dilate(skin, k, iterations=1)
     return yellow, skin
 
 
@@ -59,35 +52,53 @@ def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | No
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     core = cv2.erode(mask, k, iterations=1)
     contours, _ = cv2.findContours(core, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    if not contours:
-        contours, _ = cv2.findContours(yellow, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    yel_cnts, _ = cv2.findContours(yellow, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     min_area = max(600.0, (min(h, w) * 0.07) ** 2)
     best = None
     best_score = -1e18
     n_ok = 0
-    for c in contours:
-        area = float(cv2.contourArea(c))
-        if area < min_area:
-            continue
-        peri = cv2.arcLength(c, True) + 1e-6
-        circ = 4.0 * np.pi * area / (peri * peri)
-        if circ < 0.38:
-            continue
-        (x, y), rad = cv2.minEnclosingCircle(c)
-        if y > h * 0.93 or rad < min(h, w) * 0.05:
-            continue
-        n_ok += 1
-        score = area * circ
-        if hint is not None:
-            score -= float(np.hypot(x - hint[0], y - hint[1])) * 8.0
-        if score > best_score:
-            best_score, best = score, (float(x), float(y), float(rad), yellow, skin, c)
-    if best is None or n_ok > 3:
+    for cset in (contours, yel_cnts):
+        for c in cset:
+            area = float(cv2.contourArea(c))
+            if area < min_area:
+                continue
+            peri = cv2.arcLength(c, True) + 1e-6
+            circ = 4.0 * np.pi * area / (peri * peri)
+            if circ < 0.22:
+                continue
+            (x, y), rad = cv2.minEnclosingCircle(c)
+            if y > h * 0.88 or y < h * 0.10 or x < w * 0.10 or x > w * 0.90:
+                continue
+            if rad < min(h, w) * 0.05:
+                continue
+            x0, y0 = max(0, int(x - rad)), max(0, int(y - rad))
+            x1, y1 = min(w, int(x + rad)), min(h, int(y + rad))
+            disk = yellow[y0:y1, x0:x1]
+            if disk.size == 0:
+                continue
+            yy, xx = np.ogrid[y0:y1, x0:x1]
+            inside = (xx - x) ** 2 + (yy - y) ** 2 <= (rad * 0.85) ** 2
+            yel_frac = float((disk > 0)[inside].mean()) if inside.any() else 0.0
+            if yel_frac < 0.32:
+                continue
+            hsv = cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2HSV)
+            sat = float(hsv[:, :, 1][inside].mean()) if inside.any() else 0.0
+            if sat < 75:
+                continue
+            n_ok += 1
+            score = area * circ
+            if hint is not None:
+                score -= float(np.hypot(x - hint[0], y - hint[1])) * 8.0
+            if score > best_score:
+                best_score, best = score, (float(x), float(y), float(rad), yellow, skin, c)
+        if best is not None:
+            break
+    if best is None or n_ok > 4:
         return None
     return best
 
 
-def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float) -> np.ndarray:
+def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float, skin: np.ndarray | None = None) -> np.ndarray:
     h, w = mask.shape[:2]
     radii = np.zeros(N_ANG, dtype=np.float64)
     steps = max(int(r_max * 1.15), 50)
@@ -96,15 +107,20 @@ def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float) -> np.nda
         ang = 2.0 * np.pi * i / N_ANG
         ca, sa = np.cos(ang), np.sin(ang)
         last = 0.0
+        hit_skin_in = False
         for t in ts:
             x = int(round(cx + t * ca))
             y = int(round(cy + t * sa))
             if x < 0 or y < 0 or x >= w or y >= h:
                 break
+            if t < 0.95 * r_max and skin is not None and skin[y, x] > 0:
+                hit_skin_in = True
             if mask[y, x] > 0:
                 last = t
             elif last > 0 and t > last + 5:
                 break
+        if hit_skin_in and last > 0:
+            last = min(last, 0.82 * r_max)
         radii[i] = last
     good = radii > 1
     if good.sum() < N_ANG * 0.4:
@@ -181,7 +197,7 @@ def analyze_deformation(
     if hit is None:
         return DeformationResult(reason="no-ball")
     cx, cy, r_enc, yellow, skin, contour = hit
-    radii = _polar_radii(yellow, cx, cy, r_enc)
+    radii = _polar_radii(yellow, cx, cy, r_enc, skin)
     valid = radii > 0.25 * r_enc
     if valid.sum() < N_ANG * 0.35:
         return DeformationResult(reason="sparse-contour")
@@ -228,7 +244,7 @@ def analyze_deformation(
         press_pct = 0.0
     else:
         zdef = deficit[zone]
-        press_pct = float(np.clip(np.percentile(zdef, 65) / r_new * 100.0, 0.0, 40.0))
+        press_pct = float(np.clip(np.percentile(zdef, 65) / r_new * 100.0, 0.0, 32.0))
         if press_pct < 8.0:
             zone[:] = False
             press_pct = 0.0
