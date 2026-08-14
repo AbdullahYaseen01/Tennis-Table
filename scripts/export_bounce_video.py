@@ -266,7 +266,9 @@ def export(
 ) -> dict:
     if fast_mode is None:
         fast_mode = IS_VERCEL
-    hand_press = any(k in video_path.stem.lower() for k in ("testing", "hand", "press", "squeeze"))
+    hand_press = ball_type.startswith("pickleball") or any(
+        k in video_path.stem.lower() for k in ("testing", "hand", "press", "squeeze")
+    )
     if use_yolo is None:
         
         use_yolo = False if hand_press else (not fast_mode)
@@ -359,13 +361,17 @@ def export(
             else:
                 cx_b = cy_b = maj_b = 0.0
             if cx_b > 0:
-                deform_res = analyze_deformation(
+                dr = analyze_deformation(
                     frame, ball_type, cx_b, cy_b, baseline_px * 0.5, require_skin=True
                 )
-                deform_res = deform_smoother.update(deform_res)
-                dent = deform_res.deform_pct if deform_res.valid else 0.0
+            else:
+                dr = DeformationResult()
+            deform_res = deform_smoother.update(dr)
+            if deform_res.valid:
+                dent = deform_res.deform_pct
+                cx_b, cy_b = deform_res.cx, deform_res.cy
                 r = VideoFrameResult(
-                    detected=bool(deform_res.valid),
+                    detected=True,
                     status="compressing" if dent >= IMPACT_STATUS_MIN_PCT else "tracking",
                     cx=cx_b,
                     cy=cy_b,

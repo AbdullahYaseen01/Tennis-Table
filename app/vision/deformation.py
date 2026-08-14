@@ -87,6 +87,23 @@ def _polar_radii(contour: np.ndarray, cx: float, cy: float) -> np.ndarray:
     return radii
 
 
+def _fit_circle(xs: np.ndarray, ys: np.ndarray) -> tuple[float, float, float] | None:
+    if len(xs) < 8:
+        return None
+    A = np.c_[xs, ys, np.ones(len(xs))]
+    b = xs * xs + ys * ys
+    try:
+        sol, *_ = np.linalg.lstsq(A, b, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
+    cx = sol[0] / 2.0
+    cy = sol[1] / 2.0
+    rad = sol[2] + cx * cx + cy * cy
+    if rad <= 0:
+        return None
+    return float(cx), float(cy), float(np.sqrt(rad))
+
+
 def _largest_arc(flags: np.ndarray) -> np.ndarray:
     out = np.zeros_like(flags)
     if not flags.any():
@@ -135,15 +152,34 @@ def analyze_deformation(
     if np.isnan(radii).any():
         return DeformationResult(reason="sparse-contour")
 
-    r_baseline = float(np.percentile(radii, 78))
+    # Refine center/baseline from the undeformed rim (points near the outer radius),
+    # so the reference circle sits on the round part, not the finger dent.
+    ang = np.deg2rad(np.arange(N_ANGLES).astype(np.float64))
+    r0 = float(np.percentile(radii, 78))
+    rim = radii >= r0 * 0.94
+    if rim.sum() >= 30:
+        fit = _fit_circle(cx + radii[rim] * np.cos(ang[rim]), cy + radii[rim] * np.sin(ang[rim]))
+        if fit is not None:
+            fcx, fcy, fr = fit
+            if np.hypot(fcx - cx, fcy - cy) <= approx_radius * 0.6:
+                cx, cy = fcx, fcy
+                radii = _polar_radii(contour, cx, cy)
+                if np.isnan(radii).any():
+                    return DeformationResult(reason="sparse-contour")
+
+    r_baseline = float(np.percentile(radii, 80))
     if not (approx_radius * 0.5 <= r_baseline <= approx_radius * 1.7):
         return DeformationResult(reason="implausible-radius")
 
     deficit = np.maximum(0.0, r_baseline - radii)
-    sigma = 1.4826 * float(np.median(np.abs(deficit - np.median(deficit)))) + 1e-6
-    threshold = max(3.0 * sigma, 0.03 * r_baseline, 4.0)
+    core = deficit[deficit <= np.percentile(deficit, 70)]
+    sigma = 1.4826 * float(np.median(np.abs(core - np.median(core)))) + 1e-6
+    threshold = max(3.5 * sigma, 0.04 * r_baseline, 5.0)
 
     flags = _largest_arc(deficit > threshold)
+    # Reject implausible arcs: a real finger press spans a limited arc, not the whole ball.
+    if flags.any() and not (8 <= int(flags.sum()) <= 200):
+        flags[:] = False
 
     if require_skin and flags.any():
         ys, xs = np.mgrid[0 : frame.shape[0], 0 : frame.shape[1]]
@@ -159,9 +195,9 @@ def analyze_deformation(
         if frac < 0.06:
             flags[:] = False
 
-    peak = float(deficit[flags].max()) if flags.any() else 0.0
+    peak = float(np.percentile(deficit[flags], 90)) if flags.any() else 0.0
     deform_pct = min(45.0, peak / r_baseline * 100.0)
-    if deform_pct < 3.0:
+    if deform_pct < 8.0:
         flags[:] = False
         deform_pct = 0.0
 
@@ -199,7 +235,7 @@ class DeformationSmoother:
         if len(self._pct) > self._win:
             self._pct.pop(0)
         res.deform_pct = float(np.median(self._pct))
-        if res.deform_pct < 3.0 and res.arc_mask is not None:
+        if res.deform_pct < 8.0 and res.arc_mask is not None:
             res.arc_mask[:] = False
         self._last = res
         self._hold = self._hold_max
