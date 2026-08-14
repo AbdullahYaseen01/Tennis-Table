@@ -35,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_executor = ThreadPoolExecutor(max_workers=2)
+_executor = ThreadPoolExecutor(max_workers=1)
 ALLOWED_EXT = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 
 @app.get("/", response_class=HTMLResponse)

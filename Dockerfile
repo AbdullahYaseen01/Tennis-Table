@@ -11,6 +11,7 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DATA_DIR=/data \
+    FAST_MODE=1 \
     PORT=8000
 
 COPY requirements.txt .
