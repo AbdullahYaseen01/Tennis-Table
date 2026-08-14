@@ -8,9 +8,24 @@ import numpy as np
 from app.vision.ball_profiles import PROFILES, get_profile, reference_diameter_mm
 
 IS_VERCEL = bool(os.environ.get("VERCEL"))
+IS_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL"))
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
+
+
+def _resolve_data_dir() -> Path:
+    override = os.environ.get("DATA_DIR") or os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    if override:
+        path = Path(override)
+    elif IS_VERCEL:
+        path = Path("/tmp/data")
+    else:
+        path = PROJECT_ROOT / "data"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+DATA_DIR = _resolve_data_dir()
 CALIB_DIR = DATA_DIR / "calib"
 SAMPLES_DIR = DATA_DIR / "samples"
 DB_PATH = DATA_DIR / "runs.db"

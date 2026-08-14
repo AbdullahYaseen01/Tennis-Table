@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -10,9 +9,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from app.config import IS_VERCEL
+from app.config import DATA_DIR
 
-_JOBS_ROOT = Path("/tmp/data/jobs") if IS_VERCEL else None
+_JOBS_ROOT = DATA_DIR / "jobs"
 
 class JobStatus(str, Enum):
     QUEUED = "queued"
