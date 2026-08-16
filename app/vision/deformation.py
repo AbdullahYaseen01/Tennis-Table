@@ -24,7 +24,12 @@ class DeformationResult:
     threshold_px: float = 0.0
 
 
-def _masks(frame: np.ndarray, ball_type: str) -> tuple[np.ndarray, np.ndarray]:
+_ANG = 2.0 * np.pi * np.arange(N_ANG) / N_ANG
+_COS = np.cos(_ANG)
+_SIN = np.sin(_ANG)
+
+
+def _masks(frame: np.ndarray, ball_type: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     profile = get_profile(ball_type)
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lo = profile.hsv_lower.copy()
@@ -42,12 +47,13 @@ def _masks(frame: np.ndarray, ball_type: str) -> tuple[np.ndarray, np.ndarray]:
     # Light close only — a heavy close fills the finger dent and hides real press.
     yellow = cv2.morphologyEx(yellow, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
     skin = cv2.dilate(skin, k, iterations=1)
-    return yellow, skin
+    return yellow, skin, hsv
 
 
 def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | None):
     h, w = frame.shape[:2]
-    yellow, skin = _masks(frame, ball_type)
+    yellow, skin, hsv = _masks(frame, ball_type)
+    sat = hsv[:, :, 1]
     mask = cv2.bitwise_and(yellow, cv2.bitwise_not(skin))
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     core = cv2.erode(mask, k, iterations=1)
@@ -80,12 +86,13 @@ def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | No
                 continue
             yy, xx = np.ogrid[y0:y1, x0:x1]
             inside = (xx - x) ** 2 + (yy - y) ** 2 <= (rad * 0.85) ** 2
-            yel_frac = float((disk > 0)[inside].mean()) if inside.any() else 0.0
+            if not inside.any():
+                continue
+            yel_frac = float((disk > 0)[inside].mean())
             if yel_frac < 0.32:
                 continue
-            hsv = cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2HSV)
-            sat = float(hsv[:, :, 1][inside].mean()) if inside.any() else 0.0
-            if sat < 75:
+            sat_val = float(sat[y0:y1, x0:x1][inside].mean())
+            if sat_val < 75:
                 continue
             n_ok += 1
             score = area * circ
@@ -101,31 +108,33 @@ def _find_ball(frame: np.ndarray, ball_type: str, hint: tuple[float, float] | No
 
 
 def _polar_radii(mask: np.ndarray, cx: float, cy: float, r_max: float, skin: np.ndarray | None = None) -> np.ndarray:
+    """Vectorised radial silhouette scan (no Python per-pixel loop)."""
     h, w = mask.shape[:2]
     radii = np.zeros(N_ANG, dtype=np.float64)
     if not np.isfinite(cx) or not np.isfinite(cy) or not np.isfinite(r_max) or r_max < 4:
         return radii
     steps = max(int(r_max * 1.15), 50)
-    ts = np.linspace(0.18 * r_max, 1.28 * r_max, steps)
-    for i in range(N_ANG):
-        ang = 2.0 * np.pi * i / N_ANG
-        ca, sa = np.cos(ang), np.sin(ang)
-        last = 0.0
-        hit_skin_in = False
-        for t in ts:
-            x = int(round(cx + t * ca))
-            y = int(round(cy + t * sa))
-            if x < 0 or y < 0 or x >= w or y >= h:
-                break
-            if t < 0.95 * r_max and skin is not None and skin[y, x] > 0:
-                hit_skin_in = True
-            if mask[y, x] > 0:
-                last = t
-            elif last > 0 and t > last + 5:
-                break
-        if hit_skin_in and last > 0:
-            last = min(last, 0.82 * r_max)
-        radii[i] = last if np.isfinite(last) else 0.0
+    ts = np.linspace(0.18 * r_max, 1.28 * r_max, steps)  # (S,)
+
+    # Sample coordinates for every (angle, radius) pair at once -> (N_ANG, S)
+    xf = cx + ts[None, :] * _COS[:, None]
+    yf = cy + ts[None, :] * _SIN[:, None]
+    xi = np.clip(np.rint(xf).astype(np.intp), 0, w - 1)
+    yi = np.clip(np.rint(yf).astype(np.intp), 0, h - 1)
+    in_bounds = (xf >= 0) & (xf < w) & (yf >= 0) & (yf < h)
+
+    hits = (mask[yi, xi] > 0) & in_bounds
+    tgrid = np.broadcast_to(ts[None, :], hits.shape)
+    # Silhouette radius per angle = farthest sampled hit (interior of a filled
+    # disc is solid, so the outermost hit is the rim).
+    radii = np.where(hits, tgrid, 0.0).max(axis=1)
+
+    if skin is not None:
+        skin_hits = (skin[yi, xi] > 0) & in_bounds & (tgrid < 0.95 * r_max)
+        inner_skin = skin_hits.any(axis=1)
+        capped = inner_skin & (radii > 0)
+        radii[capped] = np.minimum(radii[capped], 0.82 * r_max)
+
     good = radii > 1
     if good.sum() < N_ANG * 0.4:
         return radii
@@ -216,47 +225,50 @@ def analyze_deformation(
     zone = np.zeros(N_ANG, dtype=bool)
     press_pct = 0.0
     skin_peak, skin_str = _skin_peak(cx, cy, r_new, skin)
-    deep_thr = max(0.08 * r_new, 8.0)
+    skin_max = float(skin_str.max())
 
-    if skin_peak is not None:
-        skin_n = skin_str / max(float(skin_str.max()), 1e-6)
-        def_n = deficit / max(r_new, 1.0)
-        joint = skin_n * def_n
-        pad = np.r_[joint[-6:], joint, joint[:6]]
-        joint = np.convolve(pad, np.ones(13) / 13.0, mode="valid")
-        cand = (skin_str >= max(0.20 * skin_str[skin_peak], 1.2)) & (deficit >= deep_thr) & valid
-        if np.any(cand):
-            peak = int(np.argmax(np.where(cand, joint, -1.0)))
-            dang = np.minimum(
-                np.abs(np.arange(N_ANG) - peak),
-                N_ANG - np.abs(np.arange(N_ANG) - peak),
-            )
-            zone = (
-                (dang <= 14)
-                & (deficit >= max(0.55 * deficit[peak], deep_thr * 0.65))
-                & (skin_str >= max(0.18 * skin_str[peak], 1.0))
-                & valid
-            )
-            zone[peak] = True
-    elif not require_skin or float(np.percentile(deficit, 95)) >= 0.14 * r_new:
-        deep = (deficit >= 0.14 * r_new) & valid
+    # Noise floor: a genuine finger press dents the rim by a real margin. This
+    # single gate removes most false positives from ramp / recovery / jitter.
+    dent_floor = max(0.11 * r_new, 9.0)
+    peak_def = float(np.percentile(deficit, 96))
+
+    if peak_def >= dent_floor:
+        # Dent centre: strongest shortfall, softly pulled toward the skin ring
+        # so an occluding finger disambiguates which side is pressed.
+        weight = deficit.copy()
+        if skin_peak is not None and skin_max > 0:
+            weight = weight * (0.5 + 0.5 * skin_str / skin_max)
+        peak = int(np.argmax(weight))
+        idx = np.arange(N_ANG)
+        dang = np.minimum(np.abs(idx - peak), N_ANG - np.abs(idx - peak))
+        # Grow a contiguous arc across the significant dent core (adaptive width).
+        thr = max(0.42 * deficit[peak], 0.6 * dent_floor)
+        deep = (deficit >= thr) & valid & (dang <= 28)
         zone = _largest_arc(deep)
-        if not (8 <= int(zone.sum()) <= 40):
-            zone[:] = False
+        zone[peak] = True
+
+        # A hand press must show skin near the dent (unless gating is disabled).
+        if require_skin:
+            zone_skin = float(skin_str[zone].max()) if zone.any() else 0.0
+            if skin_peak is None or zone_skin < max(0.35 * skin_max, 1.5):
+                zone = np.zeros(N_ANG, dtype=bool)
 
     zone = _largest_arc(zone)
-    if zone.sum() < 8:
+    n_zone = int(zone.sum())
+    if n_zone < 6 or n_zone > 70:
         zone[:] = False
         press_pct = 0.0
     else:
-        zdef = deficit[zone]
-        press_pct = float(np.clip(np.percentile(zdef, 65) / r_new * 100.0, 0.0, 32.0))
+        # Low-bias depth: robust shortfall over the detected arc, normalised by
+        # the undeformed radius. Uses the full-circle max as baseline to avoid
+        # over-reading when the arc itself pulls the percentile estimate down.
+        r_base = max(r_new, float(np.percentile(radii, 95)))
+        press_pct = float(np.clip(np.percentile(deficit[zone], 56) / r_base * 100.0, 0.0, 32.0))
         if not np.isfinite(press_pct) or press_pct < 8.0:
             zone[:] = False
             press_pct = 0.0
 
-    ang = 2.0 * np.pi * np.arange(N_ANG) / N_ANG
-    outline = np.column_stack([cx + radii * np.cos(ang), cy + radii * np.sin(ang)])
+    outline = np.column_stack([cx + radii * _COS, cy + radii * _SIN])
     outline = np.nan_to_num(outline, nan=0.0, posinf=0.0, neginf=0.0)
     deform_pct = press_pct if np.isfinite(press_pct) else 0.0
     return DeformationResult(
@@ -269,7 +281,7 @@ def analyze_deformation(
         contour=outline,
         arc_mask=zone,
         deform_pct=deform_pct,
-        threshold_px=deep_thr if np.isfinite(deep_thr) else 8.0,
+        threshold_px=dent_floor if np.isfinite(dent_floor) else 8.0,
     )
 
 
