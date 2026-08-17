@@ -26,8 +26,31 @@ from app.vision.video_measure import (
 )
 
 VERCEL_MAX_EDGE = 720
+PRESS_MAX_EDGE = 960
 
-def _lock_press_baseline(video_path: Path, ball_type: str, known_mm: float) -> tuple[float, float] | None:
+
+def _max_process_edge(*, fast_mode: bool, hand_press: bool) -> int:
+    if not fast_mode:
+        return 4096
+    if IS_VERCEL:
+        return VERCEL_MAX_EDGE
+    if hand_press:
+        return PRESS_MAX_EDGE
+    return VERCEL_MAX_EDGE
+
+
+def _resize_to_edge(frame: np.ndarray, max_edge: int) -> np.ndarray:
+    h, w = frame.shape[:2]
+    m = max(h, w)
+    if m <= max_edge:
+        return frame
+    s = max_edge / m
+    return cv2.resize(frame, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
+
+
+def _lock_press_baseline(
+    video_path: Path, ball_type: str, known_mm: float, max_edge: int
+) -> tuple[float, float] | None:
     cap = cv2.VideoCapture(str(video_path))
     radii: list[float] = []
     any_r: list[float] = []
@@ -35,9 +58,7 @@ def _lock_press_baseline(video_path: Path, ball_type: str, known_mm: float) -> t
         ok, frame = cap.read()
         if not ok:
             break
-        if max(frame.shape[0], frame.shape[1]) > VERCEL_MAX_EDGE:
-            s = VERCEL_MAX_EDGE / max(frame.shape[0], frame.shape[1])
-            frame = cv2.resize(frame, (int(frame.shape[1] * s), int(frame.shape[0] * s)), interpolation=cv2.INTER_AREA)
+        frame = _resize_to_edge(frame, max_edge)
         res = analyze_deformation(frame, ball_type, require_skin=True)
         if res.valid and res.r_baseline > 20:
             any_r.append(res.r_baseline)
@@ -308,14 +329,15 @@ def export(
         k in video_path.stem.lower() for k in ("testing", "hand", "press", "squeeze")
     )
     if use_yolo is None:
-        
         use_yolo = False if hand_press else (not fast_mode)
     analyzer = VideoBallAnalyzer(ball_type=ball_type, use_yolo=use_yolo, fast_mode=fast_mode)
+    max_edge = _max_process_edge(fast_mode=fast_mode, hand_press=hand_press)
 
     print("  Locking baseline...", flush=True)
     locked = False
+    locked_on_output_scale = False
     if hand_press:
-        press_base = _lock_press_baseline(video_path, ball_type, analyzer.known_mm)
+        press_base = _lock_press_baseline(video_path, ball_type, analyzer.known_mm, max_edge)
         if press_base:
             bpx, ppm = press_base
             analyzer.baseline_vertical_px = bpx
@@ -324,6 +346,7 @@ def export(
             analyzer.baseline_locked = True
             analyzer.bounce_counter = None
             locked = True
+            locked_on_output_scale = True
     if not locked:
         locked = analyzer.lock_baseline_from_video(str(video_path))
         if hand_press:
@@ -344,17 +367,9 @@ def export(
             analyzer.calibrator.pixels_per_mm = analyzer._px_per_mm
             analyzer.baseline_locked = True
             analyzer.bounce_counter = None
+            locked_on_output_scale = True
         else:
             raise RuntimeError("Could not lock baseline from video")
-
-    baseline_px = analyzer.baseline_vertical_px or 320.0
-    if not np.isfinite(baseline_px) or baseline_px < 20:
-        baseline_px = 320.0
-        analyzer.baseline_vertical_px = baseline_px
-    baseline_mm = analyzer.known_mm
-    baseline_radius = max(1, int(round(baseline_px / 2.0)))
-    floor_frac = analyzer._floor_frac
-    ball_label = ball_type.replace("_", " ").upper()
 
     cap = cv2.VideoCapture(str(video_path))
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
@@ -367,18 +382,28 @@ def export(
     analyzer._frame_idx = 0
 
     scale = 1.0
-    if fast_mode and max(w, h) > VERCEL_MAX_EDGE:
-        scale = VERCEL_MAX_EDGE / max(w, h)
+    if max(w, h) > max_edge:
+        scale = max_edge / max(w, h)
         w_out, h_out = int(w * scale), int(h * scale)
-        if analyzer.baseline_vertical_px:
-            analyzer.baseline_vertical_px *= scale
-        if analyzer._px_per_mm:
-            analyzer._px_per_mm *= scale
-            analyzer.calibrator.pixels_per_mm = analyzer._px_per_mm
+        if not locked_on_output_scale:
+            if analyzer.baseline_vertical_px:
+                analyzer.baseline_vertical_px *= scale
+            if analyzer._px_per_mm:
+                analyzer._px_per_mm *= scale
+                analyzer.calibrator.pixels_per_mm = analyzer._px_per_mm
         analyzer._frame_h = h_out
         analyzer._frame_w = w_out
     else:
         w_out, h_out = w, h
+
+    baseline_px = analyzer.baseline_vertical_px or 320.0
+    if not np.isfinite(baseline_px) or baseline_px < 20:
+        baseline_px = 320.0
+        analyzer.baseline_vertical_px = baseline_px
+    baseline_mm = analyzer.known_mm
+    baseline_radius = max(1, int(round(baseline_px / 2.0)))
+    floor_frac = analyzer._floor_frac
+    ball_label = ball_type.replace("_", " ").upper()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w_out, h_out))

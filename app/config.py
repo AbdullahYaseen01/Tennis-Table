@@ -9,6 +9,7 @@ from app.vision.ball_profiles import PROFILES, get_profile, reference_diameter_m
 
 IS_VERCEL = bool(os.environ.get("VERCEL"))
 IS_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL"))
+IS_RENDER = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

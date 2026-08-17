@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.config import DATA_DIR, IS_RAILWAY, IS_VERCEL
+from app.config import DATA_DIR, IS_VERCEL
 from scripts.export_bounce_video import export as export_bounce
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def process_video(
         ball_type=ball_type,
         fixed_baseline_px=fixed_baseline_px,
         fixed_px_per_mm=fixed_px_per_mm,
-        fast_mode=IS_VERCEL or IS_RAILWAY or os.environ.get("FAST_MODE", "").lower() in ("1", "true", "yes"),
+        fast_mode=IS_VERCEL or os.environ.get("FAST_MODE", "").lower() in ("1", "true", "yes"),
         use_yolo=not IS_VERCEL and os.environ.get("USE_YOLO", "0").lower() in ("1", "true", "yes"),
     )
 

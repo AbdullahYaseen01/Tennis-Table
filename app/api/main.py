@@ -51,12 +51,17 @@ def health():
     commit = (
         os.environ.get("RAILWAY_GIT_COMMIT_SHA")
         or os.environ.get("RAILWAY_GIT_COMMIT")
+        or os.environ.get("RENDER_GIT_COMMIT")
         or ""
+    )
+    platform = "render" if os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID") else (
+        "railway" if os.environ.get("RAILWAY_ENVIRONMENT") else "local"
     )
     return {
         "ok": True,
         "service": "tennis-ball-tester",
         "commit": commit[:12],
+        "platform": platform,
         "nan_guard": True,
     }
 

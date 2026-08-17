@@ -2,8 +2,16 @@ services:
   - type: web
     name: tennis-ball-tester
     runtime: docker
+    dockerfilePath: Dockerfile
+    dockerContext: .
     plan: starter
-    healthCheckPath: /api
+    healthCheckPath: /health
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: DATA_DIR
+        value: /data
+      - key: FAST_MODE
+        value: "1"
+      - key: USE_YOLO
+        value: "0"
