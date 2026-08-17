@@ -283,9 +283,8 @@ def draw_deformation(frame, res: DeformationResult, baseline_mm: float, frame_h:
         return
     cx, cy = _ival(res.cx), _ival(res.cy)
     r = max(1, _ival(res.r_baseline, 1))
+    cv2.circle(frame, (cx, cy), r, (0, 255, 0), 3, cv2.LINE_AA)
     cv2.circle(frame, (cx, cy), r, (0, 255, 255), 1, cv2.LINE_AA)
-    if res.contour is not None and len(res.contour) > 3:
-        cv2.polylines(frame, [res.contour.astype(np.int32)], True, (0, 255, 0), 2, cv2.LINE_AA)
     arc = deformed_contour_points(res)
     if arc is not None and len(arc) > 1:
         cv2.polylines(frame, [arc], False, (0, 0, 255), 5, cv2.LINE_AA)
