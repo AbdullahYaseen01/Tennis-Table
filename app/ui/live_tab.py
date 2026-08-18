@@ -147,7 +147,7 @@ class LiveTab(QWidget):
         cfg_row = QHBoxLayout()
         cfg_row.addWidget(QLabel("Ball type:"))
         self.ball_type_combo = QComboBox()
-        self.ball_type_combo.addItems(["tennis", "pickleball"])
+        self.ball_type_combo.addItems(["pickleball"])
         self.ball_type_combo.currentTextChanged.connect(self._on_ball_type_changed)
         cfg_row.addWidget(self.ball_type_combo)
         cfg_row.addWidget(QLabel("Ball ID:"))

@@ -163,7 +163,7 @@ class BounceCounter:
 class VideoBallAnalyzer:
     def __init__(
         self,
-        ball_type: str = "tennis",
+        ball_type: str = "pickleball",
         *,
         use_yolo: bool = True,
         fast_mode: bool = False,

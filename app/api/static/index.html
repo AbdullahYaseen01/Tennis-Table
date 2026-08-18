@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tennis Ball Compression Test</title>
+  <title>Pickleball Compression Test</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -301,8 +301,8 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="logo">🎾</div>
-      <h1>Ball Compression Test</h1>
+      <div class="logo">🏓</div>
+      <h1>Pickleball Compression Test</h1>
       <p class="sub">Step-by-step guided testing — captures many frames for high-accuracy baseline and compression measurement</p>
     </header>
 
@@ -327,13 +327,11 @@
           <div class="file-name" id="fileName"></div>
         </div>
         <div class="tips-box">
-          <strong>For best accuracy:</strong> use a dark mat, bright ball (yellow tennis, neon pickleball, or white golf),
+          <strong>For best accuracy:</strong> use a dark mat, a bright yellow/neon pickleball,
           camera fixed on tripod, ball fully visible — not cut at frame edges.
         </div>
         <div class="btn-row" style="margin-top:0.75rem;margin-bottom:0.5rem;">
-          <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="tennis">🎾 Tennis</button>
-          <button class="btn btn-secondary ball-type-btn" type="button" data-ball="pickleball">🏓 Pickleball</button>
-          <button class="btn btn-secondary ball-type-btn" type="button" data-ball="golf">⛳ Golf / White</button>
+          <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="pickleball">🏓 Pickleball</button>
         </div>
         <button class="btn btn-primary" id="analyzeBtn" disabled>Analyze Video (frame-by-frame)</button>
       </div>
@@ -351,15 +349,13 @@
         <div class="cam-step-panel active" id="camStep1">
           <div class="step-card">
             <h3>Step 1 — Prepare your test area</h3>
-            <p>Select ball type and confirm setup before starting the camera.</p>
+            <p>Confirm your pickleball setup before starting the camera.</p>
             <div class="btn-row" style="margin-top:0.75rem;margin-bottom:0.5rem;">
-              <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="tennis">🎾 Tennis</button>
-              <button class="btn btn-secondary ball-type-btn" type="button" data-ball="pickleball">🏓 Pickleball</button>
-              <button class="btn btn-secondary ball-type-btn" type="button" data-ball="golf">⛳ Golf / White</button>
+              <button class="btn btn-secondary ball-type-btn active" type="button" data-ball="pickleball">🏓 Pickleball</button>
             </div>
             <ul class="checklist" id="setupChecklist">
               <li id="chk1">Dark background (black/grey mat or table)</li>
-              <li id="chk2">Bright ball — yellow tennis, neon pickleball, or white golf</li>
+              <li id="chk2">Bright yellow or neon pickleball</li>
               <li id="chk3">Camera on tripod, pointing down at the ball</li>
               <li id="chk4">Ball will be fully inside the frame (not at edges)</li>
               <li id="chk5">Good lighting — no heavy shadows on the ball</li>
@@ -588,7 +584,7 @@
     let pxPerMm = null;
     let baselineStability = null;
     let baselineGoodFrames = null;
-    let ballType = "tennis";
+    let ballType = "pickleball";
     let mediaRecorder = null;
     let recordChunks = [];
     let analyzingFrame = false;

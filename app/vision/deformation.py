@@ -261,10 +261,10 @@ def analyze_deformation(
     press_pct = 0.0
     skin_peak, skin_str = _skin_peak(cx, cy, r_new, skin)
     skin_max = float(skin_str.max())
-    dent_floor = max(0.16 * r_new, 14.0)
+    dent_floor = max(0.15 * r_new, 12.0)
     peak_def = float(np.percentile(deficit, 96))
 
-    if peak_def >= dent_floor and (not require_skin or skin_peak is not None):
+    if peak_def >= dent_floor:
         weight = deficit.copy()
         if skin_peak is not None and skin_max > 0:
             weight = weight * (0.35 + 0.65 * skin_str / skin_max)
@@ -272,23 +272,35 @@ def analyze_deformation(
         idx = np.arange(N_ANG)
         dang = np.minimum(np.abs(idx - peak), N_ANG - np.abs(idx - peak))
         thr = max(0.50 * deficit[peak], 0.75 * dent_floor)
-        deep = (deficit >= thr) & valid & (dang <= 22) & (rim_skin >= 0.12)
+        if skin_peak is not None:
+            deep = (deficit >= thr) & valid & (dang <= 24) & (rim_skin >= 0.12)
+        else:
+            # No finger present: accept a genuine out-of-round dent so a
+            # damaged / already-compressed ball is still measured.
+            deep = (deficit >= thr) & valid & (dang <= 30)
         zone = _largest_arc(deep)
         zone[peak] = True
-        if require_skin:
+        if skin_peak is not None:
             zone_skin = float(skin_str[zone].max()) if zone.any() else 0.0
-            if skin_peak is None or zone_skin < max(0.40 * skin_max, 2.0):
+            if zone_skin < max(0.40 * skin_max, 2.0):
                 zone = np.zeros(N_ANG, dtype=bool)
+        elif peak_def < max(0.15 * r_new, 13.0):
+            # Shape-only path needs a clearly non-round silhouette (avoids noise).
+            zone = np.zeros(N_ANG, dtype=bool)
 
     zone = _largest_arc(zone)
     n_zone = int(zone.sum())
-    if n_zone < 8 or n_zone > 48:
+    if n_zone < 8 or n_zone > 60:
         zone[:] = False
         press_pct = 0.0
     else:
-        r_base = r_new
-        press_pct = float(np.clip(np.percentile(deficit[zone], 50) / r_base * 100.0, 0.0, 32.0))
-        if not np.isfinite(press_pct) or press_pct < 10.0:
+        # Depth from the contact arc. The deepest centre is often finger-occluded
+        # (silhouette cut) and would pin every firm press to the cap, so per-bin
+        # deficit is capped before averaging. This keeps the reading graduated
+        # (light vs hard press differ) instead of saturating.
+        zdef = np.minimum(deficit[zone], 0.42 * r_new)
+        press_pct = float(np.clip(np.percentile(zdef, 55) / r_new * 100.0, 0.0, 42.0))
+        if not np.isfinite(press_pct) or press_pct < 7.0:
             zone[:] = False
             press_pct = 0.0
 

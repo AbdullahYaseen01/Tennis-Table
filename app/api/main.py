@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.api.jobs import JobStatus, job_store
-from app.config import IS_VERCEL
+from app.vision.ball_profiles import normalize_ball_type
 from app.services.live_frame import (
     analyze_jpeg_bytes,
     compute_baseline_from_frames,
@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
-    title="Tennis Ball Video Processor",
-    description="Upload a bounce/compression test video → get annotated results video.",
+    title="Pickleball Video Processor",
+    description="Upload a pickleball compression test video → get annotated results.",
     version="1.0.0",
 )
 
@@ -68,7 +68,7 @@ def health():
 @app.get("/api")
 def api_info():
     return {
-        "service": "Tennis Ball Video Processor",
+        "service": "Pickleball Video Processor",
         "steps": [
             "1. POST /upload  — upload your .mp4 video (multipart form, field name: file)",
             "2. GET  /status/{job_id}  — poll until status is 'completed'",
@@ -83,12 +83,13 @@ async def analyze_frame(
     file: UploadFile = File(...),
     baseline_h: float | None = Form(None),
     px_per_mm: float | None = Form(None),
-    ball_type: str = Form("tennis"),
+    ball_type: str = Form("pickleball"),
 ):
     
     data = await file.read()
     if len(data) < 100:
         raise HTTPException(400, "Frame too small")
+    ball_type = normalize_ball_type(ball_type)
     return analyze_jpeg_bytes(
         data, baseline_h_px=baseline_h, px_per_mm=px_per_mm, ball_type=ball_type
     )
@@ -96,7 +97,7 @@ async def analyze_frame(
 @app.post("/analyze-baseline")
 async def analyze_baseline(
     files: list[UploadFile] = File(...),
-    ball_type: str = Form("tennis"),
+    ball_type: str = Form("pickleball"),
 ):
     
     if not files:
@@ -104,6 +105,7 @@ async def analyze_baseline(
     if len(files) > 65:
         raise HTTPException(400, "Too many frames (max 65)")
 
+    ball_type = normalize_ball_type(ball_type)
     results = []
     for upload in files:
         data = await upload.read()
@@ -118,7 +120,7 @@ async def analyze_baseline(
 @app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
-    ball_type: str = Form("tennis"),
+    ball_type: str = Form("pickleball"),
     baseline_h_px: float | None = Form(None),
     px_per_mm: float | None = Form(None),
     confidence_pct: float | None = Form(None),
@@ -131,6 +133,7 @@ async def upload_video(
     if ext not in ALLOWED_EXT:
         raise HTTPException(400, f"Unsupported format. Allowed: {', '.join(ALLOWED_EXT)}")
 
+    ball_type = normalize_ball_type(ball_type)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     job = job_store.create(Path("_placeholder"), file.filename)
 
@@ -190,7 +193,7 @@ def _process_job_sync(job_id: str) -> dict:
         job.input_path,
         job_id,
         on_progress=on_progress,
-        ball_type=opts.get("ball_type", "tennis"),
+        ball_type=opts.get("ball_type", "pickleball"),
         fixed_baseline_px=opts.get("baseline_h_px"),
         fixed_px_per_mm=opts.get("px_per_mm"),
     )
@@ -270,7 +273,7 @@ def _run_job(job_id: str) -> None:
             job.input_path,
             job_id,
             on_progress=on_progress,
-            ball_type=opts.get("ball_type", "tennis"),
+            ball_type=opts.get("ball_type", "pickleball"),
             fixed_baseline_px=opts.get("baseline_h_px"),
             fixed_px_per_mm=opts.get("px_per_mm"),
         )

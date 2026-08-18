@@ -39,7 +39,7 @@ class TestPipeline:
         self.surface = SurfaceAnalyzer(calibrator)
 
         self.state = TestState.IDLE
-        self.ball_type = "tennis"
+        self.ball_type = "pickleball"
         self.ball_id = "ball-001"
         self._last_measurement: BallMeasurement | None = None
         self._last_compression: CompressionSample | None = None

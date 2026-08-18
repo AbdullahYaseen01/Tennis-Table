@@ -26,7 +26,7 @@ class SurfaceAnalyzer:
 
     def __init__(self, calibrator: Calibrator) -> None:
         self.calibrator = calibrator
-        self.ball_type = "tennis"
+        self.ball_type = "pickleball"
         self._rotate_captures: list[tuple[np.ndarray, BallMeasurement]] = []
         self._rotate_index = 0
 

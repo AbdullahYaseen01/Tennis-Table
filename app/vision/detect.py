@@ -33,9 +33,9 @@ class BallDetector:
 
     def __init__(self, calibrator: Calibrator) -> None:
         self.calibrator = calibrator
-        self.ball_type = "tennis"
-        self.hsv_lower = np.array(COLOR_PROFILES["tennis"]["hsv_lower"], dtype=np.uint8)
-        self.hsv_upper = np.array(COLOR_PROFILES["tennis"]["hsv_upper"], dtype=np.uint8)
+        self.ball_type = "pickleball"
+        self.hsv_lower = np.array(COLOR_PROFILES["pickleball"]["hsv_lower"], dtype=np.uint8)
+        self.hsv_upper = np.array(COLOR_PROFILES["pickleball"]["hsv_upper"], dtype=np.uint8)
         self._roi: tuple[int, int, int, int] | None = None
         self._last_center: tuple[float, float] | None = None
         self._kernel = cv2.getStructuringElement(
@@ -53,7 +53,7 @@ class BallDetector:
 
     def set_ball_type(self, ball_type: str) -> None:
         self.ball_type = ball_type
-        profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])
+        profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["pickleball"])
         self.hsv_lower = np.array(profile["hsv_lower"], dtype=np.uint8)
         self.hsv_upper = np.array(profile["hsv_upper"], dtype=np.uint8)
 

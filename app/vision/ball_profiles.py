@@ -135,12 +135,12 @@ _register(
 
 
 def get_profile(ball_type: str) -> BallProfile:
-    key = ball_type.lower().strip()
-    if key in PROFILES:
-        return PROFILES[key]
-    if key.startswith("pickle"):
-        return PROFILES["pickleball"]
-    return PROFILES["tennis"]
+    key = normalize_ball_type(ball_type)
+    return PROFILES.get(key, PROFILES["pickleball"])
+
+
+def normalize_ball_type(ball_type: str | None) -> str:
+    return "pickleball"
 
 
 def reference_diameter_mm(ball_type: str) -> float:

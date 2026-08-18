@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import IS_VERCEL
+from app.vision.ball_profiles import normalize_ball_type
 from app.vision.deformation import (
     DeformationResult,
     DeformationSmoother,
@@ -220,7 +221,7 @@ def draw_measurement(
     baseline_radius: int,
     frame_h: int,
     *,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     hand_press: bool = False,
 ) -> None:
     has_shape = r.major_px > 10 and r.cx > 0 and r.cy > 0
@@ -316,12 +317,13 @@ def export(
     video_path: Path,
     out_path: Path,
     *,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     use_yolo: bool | None = None,
     fast_mode: bool | None = None,
     fixed_baseline_px: float | None = None,
     fixed_px_per_mm: float | None = None,
 ) -> dict:
+    ball_type = normalize_ball_type(ball_type)
     if fast_mode is None:
         fast_mode = IS_VERCEL
     hand_press = ball_type.startswith("pickleball") or any(
@@ -610,7 +612,7 @@ def export(
 
 def main() -> int:
     video = ROOT / "data" / "samples" / "latest testing video.mp4"
-    ball_type = "tennis"
+    ball_type = "pickleball"
     if len(sys.argv) > 1:
         video = Path(sys.argv[1])
     if len(sys.argv) > 2:

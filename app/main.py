@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Tennis Ball & Pickleball Condition Tester")
+        self.setWindowTitle("Pickleball Condition Tester")
         self.resize(1280, 800)
 
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,7 +61,7 @@ class MainWindow(QMainWindow):
         self.dashboard_tab.refresh()
 
     def _update_title(self) -> None:
-        parts = ["Tennis Ball & Pickleball Condition Tester"]
+        parts = ["Pickleball Condition Tester"]
         if self.calibrator.is_ready():
             parts.append("Calibrated")
             val = self.calibrator.get_validation()

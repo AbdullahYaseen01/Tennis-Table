@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import DATA_DIR, IS_VERCEL
+from app.vision.ball_profiles import normalize_ball_type
 from scripts.export_bounce_video import export as export_bounce
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ def process_video(
     job_id: str,
     on_progress=None,
     *,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     fixed_baseline_px: float | None = None,
     fixed_px_per_mm: float | None = None,
 ) -> tuple[Path, dict]:
@@ -62,7 +63,7 @@ def process_video(
     metrics = export_bounce(
         input_path,
         out_path,
-        ball_type=ball_type,
+        ball_type=normalize_ball_type(ball_type),
         fixed_baseline_px=fixed_baseline_px,
         fixed_px_per_mm=fixed_px_per_mm,
         fast_mode=IS_VERCEL or os.environ.get("FAST_MODE", "").lower() in ("1", "true", "yes"),

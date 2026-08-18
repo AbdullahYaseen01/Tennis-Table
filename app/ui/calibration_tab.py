@@ -120,7 +120,7 @@ class CalibrationTab(QWidget):
 
         ball_scale_row = QHBoxLayout()
         self.ball_type_combo = QComboBox()
-        self.ball_type_combo.addItems(["tennis", "pickleball"])
+        self.ball_type_combo.addItems(["pickleball"])
         ball_scale_row.addWidget(QLabel("Ball:"))
         ball_scale_row.addWidget(self.ball_type_combo)
         self.capture_ball_scale_btn = QPushButton("Add Frame")

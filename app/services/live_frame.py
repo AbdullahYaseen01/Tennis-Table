@@ -21,7 +21,7 @@ def analyze_jpeg_bytes(
     jpeg: bytes,
     baseline_h_px: float | None = None,
     px_per_mm: float | None = None,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
 ) -> dict:
     frame = decode_image(jpeg)
     if frame is None:
@@ -34,5 +34,5 @@ def analyze_jpeg_bytes(
         px_per_mm=px_per_mm,
     )
 
-def compute_baseline_from_frames(frame_results: list[dict], ball_type: str = "tennis") -> dict:
+def compute_baseline_from_frames(frame_results: list[dict], ball_type: str = "pickleball") -> dict:
     return compute_baseline_from_results(frame_results, ball_type=ball_type)

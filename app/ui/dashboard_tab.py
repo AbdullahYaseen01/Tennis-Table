@@ -96,7 +96,7 @@ class DashboardTab(QWidget):
 
         top.addWidget(QLabel("Type:"))
         self.type_filter = QComboBox()
-        self.type_filter.addItems(["All types", "tennis", "pickleball"])
+        self.type_filter.addItems(["pickleball"])
         self.type_filter.setMinimumWidth(100)
         self.type_filter.currentIndexChanged.connect(self._schedule_refresh)
         top.addWidget(self.type_filter)

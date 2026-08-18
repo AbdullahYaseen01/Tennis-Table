@@ -194,14 +194,14 @@ def _best_contour_from_mask(mask: np.ndarray, min_area: float, frame_w: int, fra
 def detect_on_frame(
     proc: np.ndarray,
     *,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     min_area: float = 1000.0,
     frame_w: int | None = None,
 ) -> tuple[float, float, float, float, np.ndarray] | None:
     
     fw = frame_w or proc.shape[1]
     low_q = fw < LOW_QUALITY_MAX_WIDTH or (proc.shape[0] * fw) < LOW_QUALITY_MAX_PIXELS
-    profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])
+    profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["pickleball"])
     eff_min = max(200.0, min_area * (0.5 if low_q else 1.0))
 
     best_hit = None
@@ -227,7 +227,7 @@ def detect_on_frame(
 def detect(
     frame: np.ndarray,
     *,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     min_area: float = 1000.0,
     quality: dict | None = None,
 ) -> tuple[float, float, float, float, np.ndarray] | None:
@@ -317,7 +317,7 @@ def is_valid_measurement(
     frame_w: int,
     baseline_minor_px: float | None = None,
     for_baseline: bool = False,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     low_quality: bool = False,
 ) -> bool:
     bx = meas.get("bbox_x", 0)
@@ -352,7 +352,7 @@ def is_valid_measurement(
 def analyze_ball_in_frame(
     frame: np.ndarray,
     *,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     baseline_minor_px: float | None = None,
     px_per_mm: float | None = None,
     roi_hint: tuple[float, float, float] | None = None,
@@ -364,7 +364,7 @@ def analyze_ball_in_frame(
     quality = assess_frame_quality(w_img, h_img)
     low_q = quality["low_quality"]
     min_ball = _min_ball_px(w_img, low_q)
-    profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])
+    profile = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["pickleball"])
 
     enhanced, scale = enhance_frame(frame, quality)
     inv = 1.0 / scale
@@ -510,7 +510,7 @@ def _load_axis_extent_px(ellipse: dict, *, vertical: bool = True) -> float:
 
 def compute_baseline_from_video(
     cap: cv2.VideoCapture,
-    ball_type: str = "tennis",
+    ball_type: str = "pickleball",
     *,
     prefer_in_air: bool = True,
 ) -> tuple[float, float]:
@@ -518,7 +518,7 @@ def compute_baseline_from_video(
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
-    ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])["diameter_mm"]
+    ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["pickleball"])["diameter_mm"]
     rnd_min = _roundness_min(ball_type)
     asp_min, asp_max = _aspect_bounds(ball_type)
 
@@ -562,7 +562,7 @@ def compute_baseline_from_video(
     return baseline_px, baseline_px / ref_mm
 
 def compute_baseline_from_results(frame_results: list[dict], ball_type: str = "tennis") -> dict:
-    ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["tennis"])["diameter_mm"]
+    ref_mm = COLOR_PROFILES.get(ball_type, COLOR_PROFILES["pickleball"])["diameter_mm"]
     minors, majors, roundness_vals = [], [], []
     low_q = any(r.get("low_quality_mode") for r in frame_results)
     min_required = MIN_BASELINE_LOW_QUALITY if low_q else MIN_BASELINE_GOOD_FRAMES
