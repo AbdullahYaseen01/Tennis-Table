@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.config import DATA_DIR, IS_VERCEL
+from app.config import DATA_DIR, IS_RAILWAY, IS_RENDER, IS_VERCEL
 from app.vision.ball_profiles import normalize_ball_type
 from scripts.export_bounce_video import export as export_bounce
 
@@ -60,14 +60,25 @@ def process_video(
     if on_progress:
         on_progress("Tracking ball and measuring compressionâ€¦")
 
+    # Cloud servers (Render/Railway/Vercel) default to fast_mode: frames are
+    # capped to a smaller edge, cutting processing time a lot with no meaningful
+    # loss of accuracy (the ball fills most of the frame). Override with FAST_MODE.
+    fast_env = os.environ.get("FAST_MODE", "").lower()
+    if fast_env in ("1", "true", "yes"):
+        fast_mode = True
+    elif fast_env in ("0", "false", "no"):
+        fast_mode = False
+    else:
+        fast_mode = IS_VERCEL or IS_RENDER or IS_RAILWAY
+
     metrics = export_bounce(
         input_path,
         out_path,
         ball_type=normalize_ball_type(ball_type),
         fixed_baseline_px=fixed_baseline_px,
         fixed_px_per_mm=fixed_px_per_mm,
-        fast_mode=IS_VERCEL or os.environ.get("FAST_MODE", "").lower() in ("1", "true", "yes"),
-        use_yolo=not IS_VERCEL and os.environ.get("USE_YOLO", "0").lower() in ("1", "true", "yes"),
+        fast_mode=fast_mode,
+        use_yolo=not fast_mode and os.environ.get("USE_YOLO", "0").lower() in ("1", "true", "yes"),
     )
 
     if on_progress:

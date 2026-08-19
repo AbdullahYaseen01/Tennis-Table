@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.api.jobs import JobStatus, job_store
+from app.config import IS_VERCEL
 from app.vision.ball_profiles import normalize_ball_type
 from app.services.live_frame import (
     analyze_jpeg_bytes,
